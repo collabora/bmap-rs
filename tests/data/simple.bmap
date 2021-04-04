@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<bmap version="2.0">
+  <ImageSize> 4194304 </ImageSize>
+  <BlockSize> 4096 </BlockSize>
+  <BlocksCount>1024</BlocksCount>
+  <MappedBlocksCount> 680 </MappedBlocksCount>
+  <ChecksumType> sha256 </ChecksumType>
+
+  <BmapFileChecksum> 0000000000000000000000000000000000000000000000000000000000000000 </BmapFileChecksum>
+  <BlockMap>
+  <!-- The checksum is the range start as  e.g. hash of 8 for the first range -->
+    <Range chksum="5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"> 0 </Range>
+    <Range chksum="2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3"> 8-16 </Range>
+    <Range chksum="e29c9c180c6279b0b02abd6a1801c7c04082cf486ec027aa13515e4f3884bb6b"> 32-64 </Range>
+    <Range chksum="2747b7c718564ba5f066f0523b03e17f6a496b06851333d2d59ab6d863225848"> 128-256 </Range>
+    <Range chksum="94f8607915dff25f013e45fc0642fb9830b0fb25ab0ab46d477eaf1061def379"> 512-1024 </Range>
+  </BlockMap>
+</bmap>
