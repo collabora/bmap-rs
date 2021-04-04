@@ -1,4 +1,6 @@
 use bmap::Bmap;
+use digest::Digest;
+use sha2::Sha256;
 
 #[test]
 fn parse() {
@@ -13,8 +15,11 @@ fn parse() {
     let mut block = 0;
     for range in bmap.block_map() {
         assert_eq!(block * 4096, range.offset());
-        assert_eq!((block + 1) * 4096 , range.length());
-        // TODO checksum
+        assert_eq!((block + 1) * 4096, range.length());
+
+        let digest = Sha256::digest(format!("{}", block).as_bytes());
+        assert_eq!(digest.as_slice(), range.checksum().as_slice());
+
         block = if block == 0 { 8 } else { block * 4 };
     }
     assert_eq!(2048, block);

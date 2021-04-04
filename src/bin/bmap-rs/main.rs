@@ -1,16 +1,15 @@
-use bmap::Bmap;
-use structopt::StructOpt;
-use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
+use bmap::Bmap;
 use std::fs::{self, File};
 use std::io::Read;
+use std::path::PathBuf;
+use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 struct Copy {
     image: PathBuf,
     dest: PathBuf,
 }
-
 
 #[derive(StructOpt, Debug)]
 enum Command {
@@ -46,10 +45,10 @@ fn copy(c: Copy) -> Result<()> {
     Ok(())
 }
 
-fn main () -> Result<()> {
+fn main() -> Result<()> {
     let opts = Opts::from_args();
 
     match opts.command {
-        Command::Copy(c) => copy(c)
+        Command::Copy(c) => copy(c),
     }
 }
