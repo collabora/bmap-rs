@@ -1,8 +1,8 @@
 <?xml version="1.0" ?>
 <bmap version="2.0">
-  <ImageSize> 4194304 </ImageSize>
+  <ImageSize> 4198400 </ImageSize>
   <BlockSize> 4096 </BlockSize>
-  <BlocksCount>1024</BlocksCount>
+  <BlocksCount>1025</BlocksCount>
   <MappedBlocksCount> 680 </MappedBlocksCount>
   <ChecksumType> sha256 </ChecksumType>
 
