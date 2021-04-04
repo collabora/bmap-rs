@@ -53,7 +53,7 @@ pub(crate) fn  from_xml(xml: &str) -> Result<crate::bmap::Bmap, XmlError> {
         .mapped_blocks(b.mapped_blocks_count);
     
     for range in b.block_map.ranges {
-        let mut split = range.range.trim().splitn(2, "-");
+        let mut split = range.range.trim().splitn(2, '-');
         let start = match split.next() {
             Some(s) => s.parse().unwrap(),
             None => unimplemented!("woops"),
