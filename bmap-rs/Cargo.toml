@@ -11,3 +11,4 @@ bmap = { path = "../bmap" }
 anyhow = "1"
 structopt = "0.3"
 nix = "0.20"
+flate2 = "1"
