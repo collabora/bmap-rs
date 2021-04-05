@@ -15,9 +15,16 @@ structopt = { version = "0.3.21", optional = true }
 sha2 = { version = "0.9.3", features = [ "asm" ] }
 strum = { version = "0.20.0", features = [ "derive"] }
 digest = "0.9.0"
+flate2 = "1.0.20"
 
 [features]
 bmap-rs = [ "anyhow", "structopt"]
+
+# Most of the actual work is CPU-heavy, in particular the rust sha2
+# implementation so use full optimisations otherwise everything will run quite
+# slow
+[profile.dev]
+opt-level = 3
 
 [[bin]]
 name = "bmap-rs"

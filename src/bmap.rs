@@ -89,7 +89,7 @@ impl Bmap {
         self.checksum_type
     }
 
-    pub fn block_map(&self) -> impl Iterator<Item = &BlockRange> {
+    pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
 }
