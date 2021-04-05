@@ -1,6 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use bmap::Bmap;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -40,7 +40,7 @@ fn copy(c: Copy) -> Result<()> {
 
     bmap::copy(&mut input, &mut output, &bmap).unwrap();
     println!("Done: Syncing");
-    output.sync_all();
+    output.sync_all().expect("Sync failure");
 
     Ok(())
 }

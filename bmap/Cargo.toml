@@ -1,0 +1,18 @@
+[package]
+name = "bmap"
+version = "0.1.0"
+authors = ["Sjoerd Simons <sjoerd@collabora.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0.24"
+quick-xml = { version = "0.22.0", features = [ "serialize" ] }
+serde = { version = "1", features = [ "derive" ] }
+anyhow = { version = "1.0.40", optional = true }
+structopt = { version = "0.3.21", optional = true }
+sha2 = { version = "0.9.3", features = [ "asm" ] }
+strum = { version = "0.20.0", features = [ "derive"] }
+digest = "0.9.0"
+flate2 = "1.0.20"
