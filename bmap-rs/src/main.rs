@@ -2,8 +2,10 @@ use anyhow::{Context, Result};
 use bmap::Bmap;
 use std::fs::File;
 use std::io::Read;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use nix::unistd::ftruncate;
 
 #[derive(StructOpt, Debug)]
 struct Copy {
@@ -38,6 +40,7 @@ fn copy(c: Copy) -> Result<()> {
         .create(true)
         .open(c.dest)?;
 
+    ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
     bmap::copy(&mut input, &mut output, &bmap).unwrap();
     println!("Done: Syncing");
     output.sync_all().expect("Sync failure");

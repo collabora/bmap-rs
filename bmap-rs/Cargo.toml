@@ -10,3 +10,4 @@ edition = "2018"
 bmap = { path = "../bmap" }
 anyhow = "1"
 structopt = "0.3"
+nix = "0.20"
