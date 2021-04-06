@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
-use bmap::{Bmap, Discarder};
+use bmap::{Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
@@ -48,6 +48,44 @@ fn find_bmap(img: &Path) -> Option<PathBuf> {
     }
 }
 
+trait ReadSeekForward: SeekForward + Read {}
+impl<T: Read + SeekForward> ReadSeekForward for T {}
+
+struct Decoder {
+    inner: Box<dyn ReadSeekForward>,
+}
+
+impl Decoder {
+    fn new<T: ReadSeekForward + 'static>(inner: T) -> Self {
+        Self {
+            inner: Box::new(inner),
+        }
+    }
+}
+
+impl Read for Decoder {
+    fn read(&mut self, data: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(data)
+    }
+}
+
+impl SeekForward for Decoder {
+    fn seek_forward(&mut self, forward: u64) -> std::io::Result<()> {
+        self.inner.seek_forward(forward)
+    }
+}
+
+fn setup_input(path: &Path) -> Result<Decoder> {
+    let f = File::open(path)?;
+    match path.extension().map(OsStr::to_str).flatten() {
+        Some("gz") => {
+            let gz = GzDecoder::new(f);
+            Ok(Decoder::new(Discarder::new(gz)))
+        }
+        _ => Ok(Decoder::new(f)),
+    }
+}
+
 fn copy(c: Copy) -> Result<()> {
     if !c.image.exists() {
         bail!("Image file doesn't exist")
@@ -68,15 +106,8 @@ fn copy(c: Copy) -> Result<()> {
 
     ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
 
-    let mut f = File::open(&c.image)?;
-    match c.image.extension().map(OsStr::to_str).flatten() {
-        Some("gz") => {
-            let gz = GzDecoder::new(f);
-            let mut input = Discarder::new(gz);
-            bmap::copy(&mut input, &mut output, &bmap)?;
-        }
-        _ => bmap::copy(&mut f, &mut output, &bmap)?,
-    }
+    let mut input = setup_input(&c.image)?;
+    bmap::copy(&mut input, &mut output, &bmap)?;
     println!("Done: Syncing...");
     output.sync_all().expect("Sync failure");
 
