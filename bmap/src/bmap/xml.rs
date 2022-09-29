@@ -17,6 +17,7 @@ struct BlockMap {
     ranges: Vec<Range>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Bmap {
     version: String,
