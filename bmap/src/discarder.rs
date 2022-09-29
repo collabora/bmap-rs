@@ -49,7 +49,7 @@ mod test {
         }
 
         let mut discarder = Discarder::new(data.as_slice());
-        &[0u64, 5, 16, 31, 63, 200, 255]
+        let _ = &[0u64, 5, 16, 31, 63, 200, 255]
             .iter()
             .fold(0, |pos, offset| {
                 let mut byte: u8 = 1;

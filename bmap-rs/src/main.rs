@@ -77,7 +77,7 @@ impl SeekForward for Decoder {
 
 fn setup_input(path: &Path) -> Result<Decoder> {
     let f = File::open(path)?;
-    match path.extension().map(OsStr::to_str).flatten() {
+    match path.extension().and_then(OsStr::to_str) {
         Some("gz") => {
             let gz = GzDecoder::new(f);
             Ok(Decoder::new(Discarder::new(gz)))

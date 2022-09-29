@@ -1,15 +1,14 @@
 on: [push, pull_request]
 
 name: CI
-
+env:
+  RUST_BACKTRACE: 1
 jobs:
   check:
     name: cargo check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          lfs: 'true'
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -36,6 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          lfs: 'true'
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
