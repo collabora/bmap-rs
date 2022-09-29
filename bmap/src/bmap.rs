@@ -1,8 +1,8 @@
-use strum::{EnumDiscriminants, EnumString};
+use strum::{Display, EnumDiscriminants, EnumString};
 use thiserror::Error;
 mod xml;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, EnumString, strum::ToString)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 #[non_exhaustive]
 pub enum HashType {
