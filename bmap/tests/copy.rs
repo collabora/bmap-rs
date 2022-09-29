@@ -148,7 +148,7 @@ fn sha256_reader<R: Read>(mut reader: R) -> [u8; 32] {
 
 #[test]
 fn copy() {
-    let (bmap, mut input) = setup_data("test.img");
+    let (bmap, mut input) = setup_data("testing.img");
     let mut output = OutputMock::new(bmap.image_size());
 
     bmap::copy(&mut input, &mut output, &bmap).unwrap();
@@ -162,7 +162,7 @@ fn copy() {
         assert_eq!(map.checksum().as_slice(), range.sha256());
     }
 
-    let (_, mut input) = setup_data("test.img");
+    let (_, mut input) = setup_data("testing.img");
     // Assert that the full gzipped content match the written output
     assert_eq!(sha256_reader(&mut input), output.sha256())
 }
