@@ -1,8 +1,14 @@
-on: [push, pull_request]
-
+on:
+  push:
+    branches-ignore:
+      - '*.tmp'
+  pull_request:
+  workflow_dispatch:
 name: CI
+
 env:
   RUST_BACKTRACE: 1
+
 jobs:
   check:
     name: cargo check
@@ -56,3 +62,16 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
+# Job to key the bors success status against
+  bors:
+    name: bors
+    if: success()
+    needs:
+      - check
+      - fmt
+      - test
+      - clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a success
+        run: exit 0
