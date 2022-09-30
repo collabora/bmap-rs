@@ -10,5 +10,5 @@ edition = "2018"
 bmap = { path = "../bmap" }
 anyhow = "1"
 structopt = "0.3"
-nix = "0.20"
+nix = "0.25"
 flate2 = "1"
