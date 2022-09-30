@@ -2,11 +2,13 @@ mod bmap;
 pub use crate::bmap::*;
 mod discarder;
 pub use crate::discarder::*;
+use nix::unistd::ftruncate;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use std::io::Result as IOResult;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::os::unix::prelude::AsRawFd;
 
 /// Trait that can only seek further forwards
 pub trait SeekForward {
@@ -35,11 +37,13 @@ pub enum CopyError {
 pub fn copy<I, O>(input: &mut I, output: &mut O, map: &Bmap) -> Result<(), CopyError>
 where
     I: Read + SeekForward,
-    O: Write + SeekForward,
+    O: Write + SeekForward + AsRawFd,
 {
     let mut hasher = match map.checksum_type() {
         HashType::Sha256 => Sha256::new(),
     };
+
+    let _ = ftruncate(output.as_raw_fd(), map.image_size() as i64);
 
     let mut v = Vec::new();
     // TODO benchmark a reasonable size for this

@@ -1,11 +1,9 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
-use nix::unistd::ftruncate;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
@@ -103,8 +101,6 @@ fn copy(c: Copy) -> Result<()> {
         .write(true)
         .create(true)
         .open(c.dest)?;
-
-    ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
 
     let mut input = setup_input(&c.image)?;
     bmap::copy(&mut input, &mut output, &bmap)?;
