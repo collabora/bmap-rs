@@ -1,5 +1,5 @@
-use bmap::{Bmap, Discarder, SeekForward};
-use flate2::read::GzDecoder;
+use bmap::helpers::setup_input;
+use bmap::{Bmap, SeekForward};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::File;
@@ -125,9 +125,7 @@ fn setup_data(basename: &str) -> (Bmap, impl Read + SeekForward) {
 
     let mut datafile = datadir.clone();
     datafile.push(format!("{}.gz", basename));
-    let g = File::open(&datafile).expect(&format!("Failed to open data file:{:?}", datafile));
-    let gz = GzDecoder::new(g);
-    let gz = Discarder::new(gz);
+    let gz = setup_input(&datafile).unwrap();
 
     (bmap, gz)
 }

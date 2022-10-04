@@ -10,9 +10,10 @@ edition = "2018"
 thiserror = "1.0.24"
 quick-xml = { version = "0.25.0", features = [ "serialize" ] }
 serde = { version = "1", features = [ "derive" ] }
-anyhow = { version = "1.0.40", optional = true }
 structopt = { version = "0.3.21", optional = true }
 sha2 = { version = "0.10.6", features = [ "asm" ] }
 strum = { version = "0.24.1", features = [ "derive"] }
 digest = "0.10.5"
 flate2 = "1.0.20"
+nix = "0.25"
+anyhow = "1"
