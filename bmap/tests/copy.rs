@@ -4,8 +4,10 @@ use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::File;
 use std::io::Result as IOResult;
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::{Cursor, Error, ErrorKind, Read, Write};
 use std::path::PathBuf;
+extern crate reqwest;
+use futures::executor::block_on;
 
 #[derive(Clone, Debug)]
 struct OutputMockRange {
@@ -110,26 +112,62 @@ impl SeekForward for OutputMock {
     }
 }
 
+async fn fetch_file(url: &str) -> Result<File, Error> {
+    let resp = reqwest::get(url).await.expect("request failed");
+    let mut out = File::create(url).expect("failed to create file");
+    let mut content = Cursor::new(resp.bytes().await.expect("failed to format content"));
+    std::io::copy(&mut content, &mut out).expect("failed to copy content");
+    Ok(out)
+}
+
 fn setup_data(basename: &str) -> (Bmap, impl Read + SeekForward) {
-    let mut datadir = PathBuf::new();
-    datadir.push(env::var("CARGO_MANIFEST_DIR").unwrap());
-    datadir.push("tests/data");
+    match &basename[..7] {
+        "http://" | "https:/" => {
+            let out = block_on(fetch_file(basename)).expect("Failed to download file");
 
-    let mut bmapfile = datadir.clone();
-    bmapfile.push(format!("{}.bmap", basename));
+            let mut datadir = PathBuf::new();
+            datadir.push(env::var("CARGO_MANIFEST_DIR").unwrap());
+            datadir.push("tests/data");
 
-    let mut b = File::open(&bmapfile).expect(&format!("Failed to open bmap file:{:?}", bmapfile));
-    let mut xml = String::new();
-    b.read_to_string(&mut xml).unwrap();
-    let bmap = Bmap::from_xml(&xml).unwrap();
+            let mut bmapfile = datadir.clone();
+            bmapfile.push(format!("{}.bmap", basename));
+            let mut b =
+                File::open(&bmapfile).expect(&format!("Failed to open bmap file:{:?}", bmapfile));
+            let mut xml = String::new();
+            b.read_to_string(&mut xml).unwrap();
+            let bmap = Bmap::from_xml(&xml).unwrap();
 
-    let mut datafile = datadir.clone();
-    datafile.push(format!("{}.gz", basename));
-    let g = File::open(&datafile).expect(&format!("Failed to open data file:{:?}", datafile));
-    let gz = GzDecoder::new(g);
-    let gz = Discarder::new(gz);
+            let mut datafile = datadir.clone();
+            datafile.push(format!("{}.gz", basename));
 
-    (bmap, gz)
+            let gz = GzDecoder::new(out);
+            let gz = Discarder::new(gz);
+
+            (bmap, gz)
+        }
+        _ => {
+            let mut datadir = PathBuf::new();
+            datadir.push(env::var("CARGO_MANIFEST_DIR").unwrap());
+            datadir.push("tests/data");
+
+            let mut bmapfile = datadir.clone();
+            bmapfile.push(format!("{}.bmap", basename));
+            let mut b =
+                File::open(&bmapfile).expect(&format!("Failed to open bmap file:{:?}", bmapfile));
+            let mut xml = String::new();
+            b.read_to_string(&mut xml).unwrap();
+            let bmap = Bmap::from_xml(&xml).unwrap();
+
+            let mut datafile = datadir.clone();
+            datafile.push(format!("{}.gz", basename));
+            let g =
+                File::open(&datafile).expect(&format!("Failed to open data file:{:?}", datafile));
+            let gz = GzDecoder::new(g);
+            let gz = Discarder::new(gz);
+
+            (bmap, gz)
+        }
+    }
 }
 
 fn sha256_reader<R: Read>(mut reader: R) -> [u8; 32] {
@@ -163,6 +201,26 @@ fn copy() {
     }
 
     let (_, mut input) = setup_data("test.img");
+    // Assert that the full gzipped content match the written output
+    assert_eq!(sha256_reader(&mut input), output.sha256())
+}
+#[test]
+fn sync_copy() {
+    let (bmap, mut input) = setup_data("https://download.fedoraproject.org/pub/fedora/linux/releases/36/Server/aarch64/images/Fedora-Server-36-1.5.aarch64.raw.xz");
+    let mut output = OutputMock::new(bmap.image_size());
+
+    bmap::copy(&mut input, &mut output, &bmap).unwrap();
+    assert_eq!(bmap::HashType::Sha256, bmap.checksum_type());
+    assert_eq!(bmap.block_map().len(), output.ranges.len());
+
+    // Assert that written ranges match the ranges in the map file
+    for (map, range) in bmap.block_map().zip(output.ranges.iter()) {
+        assert_eq!(map.offset(), range.offset);
+        assert_eq!(map.length(), range.data.len() as u64);
+        assert_eq!(map.checksum().as_slice(), range.sha256());
+    }
+
+    let (_, mut input) = setup_data("https://download.fedoraproject.org/pub/fedora/linux/releases/36/Server/aarch64/images/Fedora-Server-36-1.5.aarch64.raw.xz");
     // Assert that the full gzipped content match the written output
     assert_eq!(sha256_reader(&mut input), output.sha256())
 }
