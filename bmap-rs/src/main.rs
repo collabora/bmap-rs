@@ -76,7 +76,17 @@ impl SeekForward for Decoder {
     }
 }
 
-fn setup_input(path: &Path) -> Result<Decoder> {
+fn setup_remote_input(url: &Uri, fpath: &Path) -> Result<Decoder> {
+    match url.scheme_str() {
+        Some("https") =>panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_https function"),
+        Some("http") => panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_http function"),
+        _ => {
+            panic!("url is not http or https");
+        }
+    }
+}
+
+fn setup_local_input(path: &Path) -> Result<Decoder> {
     let f = File::open(path)?;
     match path.extension().and_then(OsStr::to_str) {
         Some("gz") => {
@@ -91,16 +101,16 @@ fn copy(c: Copy) -> Result<()> {
     let url = c
         .image
         .to_str()
-        .expect("Fail to convert target pathbuf name to str")
+        .expect("Fail to convert remote path to str")
         .parse::<Uri>()
-        .expect("Fail to convert target name to url");
+        .expect("Fail to convert remote path to url");
     let mut input = match url.scheme() {
-        Some(_) => setup_input(&c.image)?,
+        Some(_) => setup_remote_input(&url, &c.image)?,
         None => {
             if !c.image.exists() {
                 bail!("Image file doesn't exist")
             }
-            setup_input(&c.image)?
+            setup_local_input(&c.image)?
         }
     };
 
