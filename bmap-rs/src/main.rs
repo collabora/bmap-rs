@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
+use hyper::Uri;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -87,9 +88,21 @@ fn setup_input(path: &Path) -> Result<Decoder> {
 }
 
 fn copy(c: Copy) -> Result<()> {
-    if !c.image.exists() {
-        bail!("Image file doesn't exist")
-    }
+    let url = c
+        .image
+        .to_str()
+        .expect("Fail to convert target pathbuf name to str")
+        .parse::<Uri>()
+        .expect("Fail to convert target name to url");
+    let mut input = match url.scheme() {
+        Some(_) => setup_input(&c.image)?,
+        None => {
+            if !c.image.exists() {
+                bail!("Image file doesn't exist")
+            }
+            setup_input(&c.image)?
+        }
+    };
 
     let bmap = find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
     println!("Found bmap file: {}", bmap.display());
@@ -106,7 +119,6 @@ fn copy(c: Copy) -> Result<()> {
 
     ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
 
-    let mut input = setup_input(&c.image)?;
     bmap::copy(&mut input, &mut output, &bmap)?;
     println!("Done: Syncing...");
     output.sync_all().expect("Sync failure");
