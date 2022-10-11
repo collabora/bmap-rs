@@ -12,4 +12,6 @@ anyhow = "1"
 structopt = "0.3"
 nix = "0.25"
 flate2 = "1"
-hyper = "0"
+hyper = { version = "0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"

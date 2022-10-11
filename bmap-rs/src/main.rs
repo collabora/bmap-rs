@@ -1,19 +1,25 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
-use hyper::Uri;
+use hyper::body::HttpBody;
+use hyper::{Body, Client, Response, Uri};
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
+use tempfile::tempfile;
 
 #[derive(StructOpt, Debug)]
 struct Copy {
     image: PathBuf,
     dest: PathBuf,
+}
+enum Input {
+    Remote(Response<Body>),
+    Local(Decoder),
 }
 
 #[derive(StructOpt, Debug)]
@@ -75,40 +81,44 @@ impl SeekForward for Decoder {
         self.inner.seek_forward(forward)
     }
 }
-
-fn setup_remote_input(url: &Uri, fpath: &Path) -> Result<Decoder> {
-    if !fpath.ends_with(".gz") {
+async fn fetch_url_http(url: hyper::Uri) -> Result<Response<Body>, hyper::Error> {
+    let client = Client::new();
+    client.get(url).await
+}
+async fn setup_remote_input(url: Uri, fpath: &Path) -> Result<Input> {
+    if fpath.extension().unwrap() != "gz" {
         bail!("Image file format not implemented")
     }
-    match url.scheme_str() {
+    let input = Input::Remote(match url.scheme_str() {
         Some("https") =>panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_https function"),
-        Some("http") => panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_http function"),
+        Some("http") => fetch_url_http(url).await?,
         _ => {
             panic!("url is not http or https");
         }
-    }
+    });
+    Ok(input)
 }
 
-fn setup_local_input(path: &Path) -> Result<Decoder> {
+fn setup_local_input(path: &Path) -> Result<Input> {
     let f = File::open(path)?;
     match path.extension().and_then(OsStr::to_str) {
         Some("gz") => {
             let gz = GzDecoder::new(f);
-            Ok(Decoder::new(Discarder::new(gz)))
+            Ok(Input::Local(Decoder::new(Discarder::new(gz))))
         }
-        _ => Ok(Decoder::new(f)),
+        _ => Ok(Input::Local(Decoder::new(f))),
     }
 }
 
-fn copy(c: Copy) -> Result<()> {
+async fn copy(c: Copy) -> Result<()> {
     let url = c
         .image
         .to_str()
         .expect("Fail to convert remote path to str")
         .parse::<Uri>()
         .expect("Fail to convert remote path to url");
-    let mut input = match url.scheme() {
-        Some(_) => setup_remote_input(&url, &c.image)?,
+    let input_type = match url.scheme() {
+        Some(_) => setup_remote_input(url, &c.image).await?,
         None => {
             if !c.image.exists() {
                 bail!("Image file doesn't exist")
@@ -131,18 +141,39 @@ fn copy(c: Copy) -> Result<()> {
         .open(c.dest)?;
 
     ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
+    match input_type {
+        Input::Local(mut input) => {
+            bmap::copy(&mut input, &mut output, &bmap)?;
+        }
+        Input::Remote(mut res) => {
+            while let Some(next) = res.data().await {
+                let chunk = next?;
+                let mut f = tempfile()?;
+                f.write_all(&chunk)?;
 
-    bmap::copy(&mut input, &mut output, &bmap)?;
+                let mut chunk = match c.image.extension().and_then(OsStr::to_str) {
+                    Some("gz") => {
+                        let gz = GzDecoder::new(f);
+                        Decoder::new(Discarder::new(gz))
+                    }
+                    _ => Decoder::new(f),
+                };
+                bmap::copy(&mut chunk, &mut output, &bmap)?;
+            }
+        }
+    }
+
     println!("Done: Syncing...");
     output.sync_all().expect("Sync failure");
 
     Ok(())
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let opts = Opts::from_args();
 
     match opts.command {
-        Command::Copy(c) => copy(c),
+        Command::Copy(c) => copy(c).await,
     }
 }
