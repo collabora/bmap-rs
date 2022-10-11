@@ -77,6 +77,9 @@ impl SeekForward for Decoder {
 }
 
 fn setup_remote_input(url: &Uri, fpath: &Path) -> Result<Decoder> {
+    if !fpath.ends_with(".gz") {
+        bail!("Image file format not implemented")
+    }
     match url.scheme_str() {
         Some("https") =>panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_https function"),
         Some("http") => panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_http function"),
