@@ -83,7 +83,7 @@ impl SeekForward for Decoder {
 }
 async fn fetch_url_http(url: hyper::Uri) -> Result<Response<Body>, hyper::Error> {
     let client = Client::new();
-    client.get(url).await
+    client.get(url.clone()).await
 }
 async fn setup_remote_input(url: Uri, fpath: &Path) -> Result<Input> {
     if fpath.extension().unwrap() != "gz" {
@@ -93,7 +93,7 @@ async fn setup_remote_input(url: Uri, fpath: &Path) -> Result<Input> {
         Some("https") =>panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_https function"),
         Some("http") => fetch_url_http(url).await?,
         _ => {
-            panic!("url is not http or https");
+            bail!("url is not http or https")
         }
     });
     Ok(input)
@@ -118,7 +118,7 @@ async fn copy(c: Copy) -> Result<()> {
         .parse::<Uri>()
         .expect("Fail to convert remote path to url");
     let input_type = match url.scheme() {
-        Some(_) => setup_remote_input(url, &c.image).await?,
+        Some(_) => setup_remote_input(url.clone(), &c.image).await?,
         None => {
             if !c.image.exists() {
                 bail!("Image file doesn't exist")
@@ -127,7 +127,15 @@ async fn copy(c: Copy) -> Result<()> {
         }
     };
 
-    let bmap = find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
+    let bmap = match input_type {
+        Input::Local(_) => find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?,
+        Input::Remote(_) => {
+            let img_path = url.path();
+            find_bmap(Path::new(&img_path[6..]))
+                .ok_or_else(|| anyhow!("Couldn't find bmap file"))?
+        }
+    };
+
     println!("Found bmap file: {}", bmap.display());
 
     let mut b = File::open(&bmap).context("Failed to open bmap file")?;
