@@ -1,6 +1,11 @@
-use crate::SeekForward;
+use async_trait::async_trait;
+use tokio::io::AsyncRead;
+use tokio_context::context::Context;
+
+use crate::{AsyncSeekForward, SeekForward};
 use std::io::Read;
 use std::io::Result as IOResult;
+use std::pin::Pin;
 
 /// Adaptor that implements SeekForward on types only implementing Read by discarding data
 pub struct Discarder<R: Read> {
@@ -35,6 +40,46 @@ impl<R: Read> SeekForward for Discarder<R> {
         Ok(())
     }
 }
+//Async implementation
+pub struct AsyncDiscarder<R: AsyncRead> {
+    reader: R,
+}
+
+impl<R: AsyncRead> AsyncDiscarder<R> {
+    pub fn new(reader: R) -> Self {
+        Self { reader }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
+}
+
+impl<R: AsyncRead> AsyncRead for AsyncDiscarder<R> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.poll_read(cx, buf)
+    }
+}
+#[async_trait]
+impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
+    async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
+        let mut buf:[u8; 4096] = [0; 4096];
+        let mut buf = tokio::io::ReadBuf::new(&mut buf);
+        let mut left = forward as usize;
+        while left > 0 {
+            let toread = left.min(buf.capacity());
+            let (mut ctx, _handle) = Context::new();
+            let r = Pin::new(&mut self.reader).poll_read(ctx, &mut buf);
+            left = left - r;
+        }
+        Ok(())
+    }
+}
+
 
 #[cfg(test)]
 mod test {

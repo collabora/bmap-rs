@@ -1,16 +1,18 @@
 use anyhow::{anyhow, bail, Context, Result};
-use bmap::{Bmap, Discarder, SeekForward};
+use async_trait::async_trait;
+use bmap::{AsyncSeekForward, Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
 use hyper::body::HttpBody;
 use hyper::{Body, Client, Response, Uri};
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use tempfile::tempfile;
+use tokio::io::{AsyncRead};
 
 #[derive(StructOpt, Debug)]
 struct Copy {
@@ -81,6 +83,34 @@ impl SeekForward for Decoder {
         self.inner.seek_forward(forward)
     }
 }
+#[async_trait]
+trait AsyncReadSeekForward: AsyncSeekForward + AsyncRead {}
+impl<T: AsyncRead + AsyncSeekForward> AsyncReadSeekForward for T {}
+struct AsyncDecoder {
+    inner: Box<dyn AsyncReadSeekForward>,
+}
+impl AsyncDecoder {
+    fn new<T: AsyncReadSeekForward + 'static>(inner: T) -> Self {
+        Self {
+            inner: Box::new(inner),
+        }
+    }
+}
+impl AsyncRead for AsyncDecoder {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.poll_read(cx, buf)
+    }
+}
+impl AsyncSeekForward for AsyncDecoder {
+    fn async_seek_forward< 'life0, 'async_trait>(& 'life0 mut self,offset:u64) ->  core::pin::Pin<Box<dyn core::future::Future<Output = std::io::Result<()> > + core::marker::Send+ 'async_trait> >where 'life0: 'async_trait,Self: 'async_trait {
+        self.async_seek_forward(offset)
+    }
+}
+
 async fn fetch_url_http(url: hyper::Uri) -> Result<Response<Body>, hyper::Error> {
     let client = Client::new();
     client.get(url.clone()).await
@@ -143,17 +173,29 @@ async fn copy(c: Copy) -> Result<()> {
     b.read_to_string(&mut xml)?;
 
     let bmap = Bmap::from_xml(&xml)?;
-    let mut output = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(c.dest)?;
 
-    ftruncate(output.as_raw_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
     match input_type {
         Input::Local(mut input) => {
+            let mut output = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(c.dest)?;
+
+            ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
+                .context("Failed to truncate file")?;
             bmap::copy(&mut input, &mut output, &bmap)?;
+            println!("Done: Syncing...");
+            output.sync_all().expect("Sync failure");
         }
         Input::Remote(mut res) => {
+            let mut output = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(c.dest)
+                .await?;
+
+            ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
+                .context("Failed to truncate file")?;
             while let Some(next) = res.data().await {
                 let chunk = next?;
                 let mut f = tempfile()?;
@@ -162,17 +204,16 @@ async fn copy(c: Copy) -> Result<()> {
                 let mut chunk = match c.image.extension().and_then(OsStr::to_str) {
                     Some("gz") => {
                         let gz = GzDecoder::new(f);
-                        Decoder::new(Discarder::new(gz))
+                        AsyncDecoder::new(Discarder::new(gz))
                     }
-                    _ => Decoder::new(f),
+                    _ => AsyncDecoder::new(f),
                 };
-                bmap::copy(&mut chunk, &mut output, &bmap)?;
+                bmap::copy_async(&mut chunk, &mut output, &bmap).await?;
             }
+            println!("Done: Syncing...");
+            output.sync_all().await.expect("Sync failure");
         }
     }
-
-    println!("Done: Syncing...");
-    output.sync_all().expect("Sync failure");
 
     Ok(())
 }

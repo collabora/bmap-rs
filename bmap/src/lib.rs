@@ -2,15 +2,16 @@ mod bmap;
 pub use crate::bmap::*;
 mod discarder;
 pub use crate::discarder::*;
+use async_trait::async_trait;
 use sha2::{Digest, Sha256};
-use thiserror::Error;
-
 use std::io::Result as IOResult;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::marker::Unpin;
-use async_trait::async_trait;
 use std::marker::Send;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use std::marker::Unpin;
+use std::pin::Pin;
+use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
+use tokio_context::context::Context;
 
 /// Trait that can only seek further forwards
 pub trait SeekForward {
@@ -28,7 +29,7 @@ pub trait AsyncSeekForward {
     async fn async_seek_forward(&mut self, offset: u64) -> IOResult<()>;
 }
 #[async_trait]
-impl<T: AsyncSeekExt + Unpin + Send> AsyncSeekForward for T {
+impl<T: AsyncSeek + Unpin + Send> AsyncSeekForward for T {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         self.seek(SeekFrom::Current(forward as i64)).await?;
         Ok(())
@@ -97,8 +98,8 @@ where
 
 pub async fn copy_async<I, O>(input: &mut I, output: &mut O, map: &Bmap) -> Result<(), CopyError>
 where
-    I: AsyncReadExt + AsyncSeekForward + Unpin,
-    O: AsyncWriteExt + AsyncSeekForward + Unpin,
+    I: AsyncRead + AsyncSeekForward + Unpin,
+    O: AsyncWrite + AsyncSeekForward + Unpin,
 {
     let mut hasher = match map.checksum_type() {
         HashType::Sha256 => Sha256::new(),
@@ -107,7 +108,7 @@ where
     // TODO benchmark a reasonable size for this
     v.resize(8 * 1024 * 1024, 0);
 
-    let buf = v.as_mut_slice();
+    let buf = tokio::io::ReadBuf::new(v.as_mut_slice());
     let mut position = 0;
     for range in map.block_map() {
         let forward = range.offset() - position;
@@ -122,17 +123,16 @@ where
 
         let mut left = range.length() as usize;
         while left > 0 {
-            let toread = left.min(buf.len());
-            let r = input
-                .read(&mut buf[0..toread])
-                .await
-                .map_err(CopyError::ReadError)?;
+            let (mut ctx, _handle) = Context::new();
+            let r = Pin::new(input)
+                .poll_read(ctx,&mut buf)
+                .ready()?;
             if r == 0 {
                 return Err(CopyError::UnexpectedEof);
             }
-            hasher.update(&buf[0..r]);
+            hasher.update(&buf);
             output
-                .write(&buf[0..r])
+                .write(&buf)
                 .await
                 .map_err(CopyError::WriteError)?;
             left -= r;
