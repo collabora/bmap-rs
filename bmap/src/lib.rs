@@ -4,6 +4,7 @@ mod discarder;
 pub use crate::discarder::*;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use std::io::Result as IOResult;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::Send;
@@ -108,7 +109,7 @@ where
     // TODO benchmark a reasonable size for this
     v.resize(8 * 1024 * 1024, 0);
 
-    let buf = tokio::io::ReadBuf::new(v.as_mut_slice());
+    let buf = v.as_mut_slice();
     let mut position = 0;
     for range in map.block_map() {
         let forward = range.offset() - position;
@@ -123,10 +124,8 @@ where
 
         let mut left = range.length() as usize;
         while left > 0 {
-            let (mut ctx, _handle) = Context::new();
-            let r = Pin::new(input)
-                .poll_read(ctx,&mut buf)
-                .ready()?;
+            let r = input
+                .read(buf).await.expect("msg");
             if r == 0 {
                 return Err(CopyError::UnexpectedEof);
             }

@@ -102,7 +102,7 @@ impl AsyncRead for AsyncDecoder {
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        self.poll_read(cx, buf)
+        self.inner.poll_read(cx, buf)
     }
 }
 impl AsyncSeekForward for AsyncDecoder {
@@ -204,7 +204,7 @@ async fn copy(c: Copy) -> Result<()> {
                 let mut chunk = match c.image.extension().and_then(OsStr::to_str) {
                     Some("gz") => {
                         let gz = GzDecoder::new(f);
-                        AsyncDecoder::new(Discarder::new(gz))
+                        AsyncDecoder::new(AsyncDiscarder::new(gz))
                     }
                     _ => AsyncDecoder::new(f),
                 };

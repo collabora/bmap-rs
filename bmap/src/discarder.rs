@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio_context::context::Context;
 
 use crate::{AsyncSeekForward, SeekForward};
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::io::Read;
 use std::io::Result as IOResult;
 use std::pin::Pin;
@@ -42,38 +45,37 @@ impl<R: Read> SeekForward for Discarder<R> {
 }
 //Async implementation
 pub struct AsyncDiscarder<R: AsyncRead> {
-    reader: R,
+    reader: RefCell<R>,
 }
 
 impl<R: AsyncRead> AsyncDiscarder<R> {
     pub fn new(reader: R) -> Self {
-        Self { reader }
+        Self { reader:RefCell::new(reader) }
     }
 
     pub fn into_inner(self) -> R {
-        self.reader
+        self.reader.into_inner()
     }
 }
 
-impl<R: AsyncRead> AsyncRead for AsyncDiscarder<R> {
+impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        self.poll_read(cx, buf)
+        Pin::new(&mut *self.reader.borrow_mut()).poll_read(cx, buf)
     }
 }
 #[async_trait]
-impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
+impl<R: AsyncRead + Unpin > AsyncSeekForward for AsyncDiscarder<R> {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         let mut buf:[u8; 4096] = [0; 4096];
-        let mut buf = tokio::io::ReadBuf::new(&mut buf);
         let mut left = forward as usize;
         while left > 0 {
-            let toread = left.min(buf.capacity());
-            let (mut ctx, _handle) = Context::new();
-            let r = Pin::new(&mut self.reader).poll_read(ctx, &mut buf);
+            let toread = left.min(buf.len());
+            let reader =  self.reader.borrow();
+            let r = reader.read(&mut buf[0..toread]).await.expect("msg");
             left = left - r;
         }
         Ok(())
