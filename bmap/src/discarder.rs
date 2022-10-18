@@ -1,14 +1,14 @@
-use async_trait::async_trait;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
-use tokio_context::context::Context;
-
 use crate::{AsyncSeekForward, SeekForward};
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use async_trait::async_trait;
+use futures::executor::block_on;
+use tokio::io::{AsyncReadExt, AsyncRead};
+use futures::Future;
+use std::fmt::Debug;
 use std::io::Read;
 use std::io::Result as IOResult;
 use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 
 /// Adaptor that implements SeekForward on types only implementing Read by discarding data
 pub struct Discarder<R: Read> {
@@ -44,44 +44,46 @@ impl<R: Read> SeekForward for Discarder<R> {
     }
 }
 //Async implementation
+
 pub struct AsyncDiscarder<R: AsyncRead> {
-    reader: RefCell<R>,
+    reader: R,
 }
 
-impl<R: AsyncRead> AsyncDiscarder<R> {
+impl<R: AsyncRead + Debug> AsyncDiscarder<R> {
     pub fn new(reader: R) -> Self {
-        Self { reader:RefCell::new(reader) }
+        Self { reader }
     }
 
     pub fn into_inner(self) -> R {
-        self.reader.into_inner()
+        self.reader
     }
 }
 
 impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
     fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        Pin::new(&mut *self.reader.borrow_mut()).poll_read(cx, buf)
+    ) -> Poll<Result<(), std::io::Error>> {
+        if buf.remaining() == 0 {
+            return Poll::Ready(Ok(()));
+        }
+        Pin::new(&mut self.reader).poll_read(cx, buf) 
     }
 }
-#[async_trait]
-impl<R: AsyncRead + Unpin > AsyncSeekForward for AsyncDiscarder<R> {
+#[async_trait(?Send)]
+impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
-        let mut buf:[u8; 4096] = [0; 4096];
+        let mut buf = [0; 4096];
         let mut left = forward as usize;
         while left > 0 {
             let toread = left.min(buf.len());
-            let reader =  self.reader.borrow();
-            let r = reader.read(&mut buf[0..toread]).await.expect("msg");
-            left = left - r;
+            let r = block_on(self.read(&mut buf[0..toread]))?;
+            left -= r;
         }
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod test {

@@ -1,18 +1,18 @@
 use anyhow::{anyhow, bail, Context, Result};
-use async_trait::async_trait;
-use bmap::{AsyncSeekForward, Bmap, Discarder, SeekForward};
+use bmap::{AsyncDiscarder, Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
-use hyper::body::HttpBody;
+use futures::{StreamExt, TryStreamExt};
 use hyper::{Body, Client, Response, Uri};
+use hyper_tls::HttpsConnector;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
-use tempfile::tempfile;
-use tokio::io::{AsyncRead};
+use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio_util::io::StreamReader;
 
 #[derive(StructOpt, Debug)]
 struct Copy {
@@ -83,44 +83,21 @@ impl SeekForward for Decoder {
         self.inner.seek_forward(forward)
     }
 }
-#[async_trait]
-trait AsyncReadSeekForward: AsyncSeekForward + AsyncRead {}
-impl<T: AsyncRead + AsyncSeekForward> AsyncReadSeekForward for T {}
-struct AsyncDecoder {
-    inner: Box<dyn AsyncReadSeekForward>,
-}
-impl AsyncDecoder {
-    fn new<T: AsyncReadSeekForward + 'static>(inner: T) -> Self {
-        Self {
-            inner: Box::new(inner),
-        }
-    }
-}
-impl AsyncRead for AsyncDecoder {
-    fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        self.inner.poll_read(cx, buf)
-    }
-}
-impl AsyncSeekForward for AsyncDecoder {
-    fn async_seek_forward< 'life0, 'async_trait>(& 'life0 mut self,offset:u64) ->  core::pin::Pin<Box<dyn core::future::Future<Output = std::io::Result<()> > + core::marker::Send+ 'async_trait> >where 'life0: 'async_trait,Self: 'async_trait {
-        self.async_seek_forward(offset)
-    }
-}
-
 async fn fetch_url_http(url: hyper::Uri) -> Result<Response<Body>, hyper::Error> {
     let client = Client::new();
     client.get(url.clone()).await
+}
+async fn fetch_url_https(url: hyper::Uri) -> Result<Response<Body>, hyper::Error> {
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
+    client.get(url).await
 }
 async fn setup_remote_input(url: Uri, fpath: &Path) -> Result<Input> {
     if fpath.extension().unwrap() != "gz" {
         bail!("Image file format not implemented")
     }
     let input = Input::Remote(match url.scheme_str() {
-        Some("https") =>panic!("This feature doesn't work because it needs implementing async enviroment and fetch_url_https function"),
+        Some("https") => fetch_url_https(url).await?,
         Some("http") => fetch_url_http(url).await?,
         _ => {
             bail!("url is not http or https")
@@ -161,8 +138,12 @@ async fn copy(c: Copy) -> Result<()> {
         Input::Local(_) => find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?,
         Input::Remote(_) => {
             let img_path = url.path();
-            find_bmap(Path::new(&img_path[6..]))
-                .ok_or_else(|| anyhow!("Couldn't find bmap file"))?
+            let bmap_name = match Path::new(img_path).file_name() {
+                Some(file_name) => find_bmap(Path::new(&file_name))
+                    .ok_or_else(|| anyhow!("Couldn't find bmap file {:?}", file_name))?,
+                None => bail!("No filename encontered"),
+            };
+            bmap_name
         }
     };
 
@@ -187,29 +168,27 @@ async fn copy(c: Copy) -> Result<()> {
             println!("Done: Syncing...");
             output.sync_all().expect("Sync failure");
         }
-        Input::Remote(mut res) => {
+        Input::Remote(res) => {
             let mut output = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .open(c.dest)
                 .await?;
-
             ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
                 .context("Failed to truncate file")?;
-            while let Some(next) = res.data().await {
-                let chunk = next?;
-                let mut f = tempfile()?;
-                f.write_all(&chunk)?;
-
-                let mut chunk = match c.image.extension().and_then(OsStr::to_str) {
-                    Some("gz") => {
-                        let gz = GzDecoder::new(f);
-                        AsyncDecoder::new(AsyncDiscarder::new(gz))
-                    }
-                    _ => AsyncDecoder::new(f),
-                };
-                bmap::copy_async(&mut chunk, &mut output, &bmap).await?;
-            }
+            let mut chunk = match c.image.extension().and_then(OsStr::to_str) {
+                Some("gz") => {
+                    let stream = res.into_body().into_stream();
+                    let stream = stream.map(|result| {
+                        result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+                    });
+                    let read = StreamReader::new(stream);
+                    let reader = async_compression::tokio::bufread::GzipDecoder::new(read);
+                    AsyncDiscarder::new(reader)
+                }
+                _ => bail!("Image file format not implemented"),
+            };
+            bmap::copy_async(&mut chunk, &mut output, &bmap).await?;
             println!("Done: Syncing...");
             output.sync_all().await.expect("Sync failure");
         }

@@ -3,16 +3,15 @@ pub use crate::bmap::*;
 mod discarder;
 pub use crate::discarder::*;
 use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use futures::TryFutureExt;
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncReadExt;
 use std::io::Result as IOResult;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::Send;
 use std::marker::Unpin;
-use std::pin::Pin;
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
-use tokio_context::context::Context;
 
 /// Trait that can only seek further forwards
 pub trait SeekForward {
@@ -25,11 +24,11 @@ impl<T: Seek> SeekForward for T {
         Ok(())
     }
 }
-#[async_trait]
+#[async_trait(?Send)]
 pub trait AsyncSeekForward {
     async fn async_seek_forward(&mut self, offset: u64) -> IOResult<()>;
 }
-#[async_trait]
+#[async_trait(?Send)]
 impl<T: AsyncSeek + Unpin + Send> AsyncSeekForward for T {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         self.seek(SeekFrom::Current(forward as i64)).await?;
@@ -57,7 +56,6 @@ where
     let mut hasher = match map.checksum_type() {
         HashType::Sha256 => Sha256::new(),
     };
-
     let mut v = Vec::new();
     // TODO benchmark a reasonable size for this
     v.resize(8 * 1024 * 1024, 0);
@@ -115,26 +113,28 @@ where
         let forward = range.offset() - position;
         input
             .async_seek_forward(forward)
-            .await
-            .map_err(CopyError::ReadError)?;
+            .map_err(CopyError::ReadError)
+            .await?;
         output
             .async_seek_forward(forward)
-            .await
-            .map_err(CopyError::WriteError)?;
+            .map_err(CopyError::WriteError)
+            .await?;
 
         let mut left = range.length() as usize;
         while left > 0 {
+            let toread = left.min(buf.len());
             let r = input
-                .read(buf).await.expect("msg");
+                .read(&mut buf[0..toread])
+                .await
+                .expect("Reading error while copying");
+            //Does not reach here
             if r == 0 {
                 return Err(CopyError::UnexpectedEof);
             }
             hasher.update(&buf);
-            output
-                .write(&buf)
-                .await
-                .map_err(CopyError::WriteError)?;
+            output.write(buf).await.map_err(CopyError::WriteError)?;
             left -= r;
+            println!("After left value : {}", left);
         }
         let digest = hasher.finalize_reset();
         if range.checksum().as_slice() != digest.as_slice() {
