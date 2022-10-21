@@ -185,8 +185,10 @@ async fn copy(c: Copy) -> Result<()> {
                 .create(true)
                 .open(c.dest)?;
 
-            ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
-                .context("Failed to truncate file")?;
+            if output.metadata()?.is_file() {
+                ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
+                    .context("Failed to truncate file")?;
+            }
             bmap::copy(&mut input, &mut output, &bmap)?;
             println!("Done: Syncing...");
             output.sync_all().expect("Sync failure");
