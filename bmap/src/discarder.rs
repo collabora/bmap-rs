@@ -1,14 +1,13 @@
 use crate::{AsyncSeekForward, SeekForward};
 use async_trait::async_trait;
 use futures::executor::block_on;
-use tokio::io::{AsyncReadExt, AsyncRead};
-use futures::Future;
 use std::fmt::Debug;
 use std::io::Read;
 use std::io::Result as IOResult;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Adaptor that implements SeekForward on types only implementing Read by discarding data
 pub struct Discarder<R: Read> {
@@ -65,10 +64,7 @@ impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
         cx: &mut Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<Result<(), std::io::Error>> {
-        if buf.remaining() == 0 {
-            return Poll::Ready(Ok(()));
-        }
-        Pin::new(&mut self.reader).poll_read(cx, buf) 
+        Pin::new(&mut self.reader).poll_read(cx, buf)
     }
 }
 #[async_trait(?Send)]

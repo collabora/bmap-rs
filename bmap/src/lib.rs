@@ -3,8 +3,6 @@ pub use crate::bmap::*;
 mod discarder;
 pub use crate::discarder::*;
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use futures::TryFutureExt;
 use sha2::{Digest, Sha256};
 use std::io::Result as IOResult;
@@ -12,6 +10,8 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::Send;
 use std::marker::Unpin;
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 /// Trait that can only seek further forwards
 pub trait SeekForward {
@@ -122,19 +122,16 @@ where
 
         let mut left = range.length() as usize;
         while left > 0 {
-            let toread = left.min(buf.len());
-            let r = input
-                .read(&mut buf[0..toread])
-                .await
-                .expect("Reading error while copying");
-            //Does not reach here
+            let r = input.read(buf).map_err(CopyError::ReadError).await?;
             if r == 0 {
                 return Err(CopyError::UnexpectedEof);
             }
-            hasher.update(&buf);
-            output.write(buf).await.map_err(CopyError::WriteError)?;
+            hasher.update(&buf[0..r]);
+            output
+                .write_all(&buf[0..r])
+                .await
+                .map_err(CopyError::WriteError)?;
             left -= r;
-            println!("After left value : {}", left);
         }
         let digest = hasher.finalize_reset();
         if range.checksum().as_slice() != digest.as_slice() {

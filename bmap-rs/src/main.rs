@@ -11,7 +11,6 @@ use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 use tokio_util::io::StreamReader;
 
 #[derive(StructOpt, Debug)]
