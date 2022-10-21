@@ -2,12 +2,13 @@ use anyhow::{anyhow, bail, Context, Result};
 use bmap::{AsyncDiscarder, Bmap, Discarder, SeekForward};
 use flate2::read::GzDecoder;
 use futures::{StreamExt, TryStreamExt};
+use hyper::body::HttpBody;
 use hyper::{Body, Client, Response, Uri};
 use hyper_tls::HttpsConnector;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
-use std::fs::File;
-use std::io::Read;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
@@ -136,21 +137,48 @@ async fn copy(c: Copy) -> Result<()> {
     let bmap = match input_type {
         Input::Local(_) => find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?,
         Input::Remote(_) => {
-            let img_path = url.path();
-            let bmap_name = match Path::new(img_path).file_name() {
-                Some(file_name) => find_bmap(Path::new(&file_name))
-                    .ok_or_else(|| anyhow!("Couldn't find bmap file {:?}", file_name))?,
-                None => bail!("No filename encountered"),
-            };
-            bmap_name
+            let mut url_bmap = c.image.clone();
+            url_bmap.set_extension("bmap");
+            url_bmap
         }
     };
 
     println!("Found bmap file: {}", bmap.display());
 
-    let mut b = File::open(&bmap).context("Failed to open bmap file")?;
+    let mut b = match input_type {
+        Input::Local(_) => File::open(&bmap).context("Failed to open bmap file")?,
+        Input::Remote(_) => {
+            let url_bmap = bmap
+                .to_str()
+                .expect("Fail to convert remote path to str")
+                .parse::<Uri>()
+                .expect("Fail to convert remote path to url");
+            let mut bmap_res = match url_bmap.scheme_str() {
+                Some("https") => fetch_url_https(url_bmap).await?,
+                Some("http") => fetch_url_http(url_bmap).await?,
+                _ => {
+                    bail!("url is not http or https")
+                }
+            };
+            let bmap_name = Path::new(bmap.file_name().unwrap());
+            {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(bmap_name)
+                    .unwrap();
+                while let Some(next) = bmap_res.data().await {
+                    let chunk = next?;
+                    file.write_all(&chunk)?;
+                }
+            }
+            File::open(bmap_name).context("Failed to open bmap file")?
+        }
+    };
     let mut xml = String::new();
     b.read_to_string(&mut xml)?;
+    //Error: Bad file descriptor (os error 9)
 
     let bmap = Bmap::from_xml(&xml)?;
 

@@ -123,7 +123,10 @@ where
         let mut left = range.length() as usize;
         while left > 0 {
             let toread = left.min(buf.len());
-            let r = input.read(&mut buf[0..toread]).map_err(CopyError::ReadError).await?;
+            let r = input
+                .read(&mut buf[0..toread])
+                .map_err(CopyError::ReadError)
+                .await?;
             if r == 0 {
                 return Err(CopyError::UnexpectedEof);
             }
