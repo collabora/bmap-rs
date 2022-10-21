@@ -140,7 +140,7 @@ async fn copy(c: Copy) -> Result<()> {
             let bmap_name = match Path::new(img_path).file_name() {
                 Some(file_name) => find_bmap(Path::new(&file_name))
                     .ok_or_else(|| anyhow!("Couldn't find bmap file {:?}", file_name))?,
-                None => bail!("No filename encontered"),
+                None => bail!("No filename encountered"),
             };
             bmap_name
         }
