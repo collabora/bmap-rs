@@ -7,8 +7,8 @@ use hyper::{Body, Client, Response, Uri};
 use hyper_tls::HttpsConnector;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::{Cursor, Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
@@ -145,8 +145,14 @@ async fn copy(c: Copy) -> Result<()> {
 
     println!("Found bmap file: {}", bmap.display());
 
-    let mut b = match input_type {
-        Input::Local(_) => File::open(&bmap).context("Failed to open bmap file")?,
+    let bmap = match input_type {
+        Input::Local(_) => {
+            let mut b = File::open(&bmap).context("Failed to open bmap file")?;
+            let mut xml = String::new();
+            b.read_to_string(&mut xml)?;
+            Bmap::from_xml(&xml)?
+        }
+
         Input::Remote(_) => {
             let url_bmap = bmap
                 .to_str()
@@ -160,27 +166,17 @@ async fn copy(c: Copy) -> Result<()> {
                     bail!("url is not http or https")
                 }
             };
-            let bmap_name = Path::new(bmap.file_name().unwrap());
-            {
-                let mut file = OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(bmap_name)
-                    .unwrap();
-                while let Some(next) = bmap_res.data().await {
-                    let chunk = next?;
-                    file.write_all(&chunk)?;
-                }
+            let mut c = Cursor::new(Vec::new());
+            while let Some(next) = bmap_res.data().await {
+                let chunk = next?;
+                c.write_all(&chunk)?;
             }
-            File::open(bmap_name).context("Failed to open bmap file")?
+            c.set_position(0);
+            let mut xml = String::new();
+            c.read_to_string(&mut xml)?;
+            Bmap::from_xml(&xml)?
         }
     };
-    let mut xml = String::new();
-    b.read_to_string(&mut xml)?;
-    //Error: Bad file descriptor (os error 9)
-
-    let bmap = Bmap::from_xml(&xml)?;
 
     match input_type {
         Input::Local(mut input) => {
