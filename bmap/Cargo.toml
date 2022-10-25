@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0.24"
 quick-xml = { version = "0.26.0", features = [ "serialize" ] }
-serde = { version = "1", features = [ "derive" ] }
+serde = { version = "1.0.147", features = [ "derive" ] }
 anyhow = { version = "1.0.40", optional = true }
 sha2 = { version = "0.10.6", features = [ "asm" ] }
 strum = { version = "0.24.1", features = [ "derive"] }
