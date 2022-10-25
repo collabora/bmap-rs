@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
+use clap::Parser;
 use flate2::read::GzDecoder;
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
@@ -7,22 +8,22 @@ use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 struct Copy {
     image: PathBuf,
     dest: PathBuf,
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
+
 enum Command {
     Copy(Copy),
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Parser, Debug)]
 struct Opts {
-    #[structopt(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -118,7 +119,7 @@ fn copy(c: Copy) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     match opts.command {
         Command::Copy(c) => copy(c),
