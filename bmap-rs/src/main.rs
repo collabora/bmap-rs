@@ -2,8 +2,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
 use clap::Parser;
 use flate2::read::GzDecoder;
+use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
+use std::fmt::Write;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
@@ -100,7 +102,7 @@ fn copy(c: Copy) -> Result<()> {
     b.read_to_string(&mut xml)?;
 
     let bmap = Bmap::from_xml(&xml)?;
-    let mut output = std::fs::OpenOptions::new()
+    let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .open(c.dest)?;
@@ -111,7 +113,14 @@ fn copy(c: Copy) -> Result<()> {
     }
 
     let mut input = setup_input(&c.image)?;
-    bmap::copy(&mut input, &mut output, &bmap)?;
+    let pb = ProgressBar::new(bmap.total_mapped_size());
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
+        .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+        .progress_chars("#>-"));
+    bmap::copy(&mut input, &mut pb.wrap_write(&output), &bmap)?;
+    pb.finish_and_clear();
+
     println!("Done: Syncing...");
     output.sync_all().expect("Sync failure");
 

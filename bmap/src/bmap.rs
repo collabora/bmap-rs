@@ -92,6 +92,9 @@ impl Bmap {
     pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
+    pub fn total_mapped_size(&self) -> u64 {
+        self.block_size * self.mapped_blocks
+    }
 }
 
 #[derive(Clone, Debug, Error)]
