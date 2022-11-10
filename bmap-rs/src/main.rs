@@ -4,6 +4,7 @@ use clap::{arg, command, ArgMatches, Command as Command_clap};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
+use reqwest::Url;
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
@@ -12,9 +13,40 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
+enum Image {
+    Path(PathBuf),
+    Url(Url),
+}
+
+impl Image {
+    fn path(self) -> PathBuf {
+        if let Image::Path(c) = self {
+            c
+        } else {
+            panic!("Not a path")
+        }
+    }
+
+    // Commented to avoid unused code warning
+    //fn url(self) -> Url {
+    //    if let Image::Url(d) = self { d } else { panic!("Not a url") }
+    //}
+}
+
+#[derive(Debug)]
 struct Copy {
-    image: PathBuf,
+    image: Image,
     dest: PathBuf,
+}
+impl Copy {
+    fn parse(input: &ArgMatches) -> Copy {
+        let image = match Url::parse(input.get_one::<String>("IMAGE").unwrap()) {
+            Ok(url) => Image::Url(url),
+            Err(_) => Image::Path(PathBuf::from(input.get_one::<String>("IMAGE").unwrap())),
+        };
+        let dest = PathBuf::from(input.get_one::<String>("DESTINY").unwrap());
+        Copy { image, dest }
+    }
 }
 
 #[derive(Debug)]
@@ -42,10 +74,7 @@ fn parser() -> Opts {
         .get_matches();
     match matches.subcommand() {
         Some(("copy", sub_matches)) => Opts {
-            command: Command::Copy(Copy{
-                image: PathBuf::from(sub_matches.get_one::<String>("IMAGE").unwrap()),
-                dest: PathBuf::from(sub_matches.get_one::<String>("DESTINY").unwrap())
-            }),
+            command: Command::Copy(Copy::parse(sub_matches)),
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
@@ -112,11 +141,12 @@ fn setup_input(path: &Path) -> Result<Decoder> {
 }
 
 fn copy(c: Copy) -> Result<()> {
-    if !c.image.exists() {
+    let image = c.image.path();
+    if !image.exists() {
         bail!("Image file doesn't exist")
     }
 
-    let bmap = find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
+    let bmap = find_bmap(&image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
     println!("Found bmap file: {}", bmap.display());
 
     let mut b = File::open(&bmap).context("Failed to open bmap file")?;
@@ -134,7 +164,7 @@ fn copy(c: Copy) -> Result<()> {
             .context("Failed to truncate file")?;
     }
 
-    let mut input = setup_input(&c.image)?;
+    let mut input = setup_input(&image)?;
     let pb = ProgressBar::new(bmap.total_mapped_size());
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
         .unwrap()
