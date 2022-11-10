@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
-use clap::Parser;
+use clap::{arg, command, ArgMatches, Command as Command_clap};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
@@ -11,22 +11,44 @@ use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
 struct Copy {
     image: PathBuf,
     dest: PathBuf,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
 
 enum Command {
     Copy(Copy),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
 struct Opts {
-    #[command(subcommand)]
     command: Command,
+}
+
+fn parser() -> Opts {
+    let matches = command!()
+        .propagate_version(true)
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command_clap::new("copy")
+                .about("Copy disk image to destiny")
+                .arg(arg!([IMAGE]).required(true))
+                .arg(arg!([DESTINY]).required(true)),
+        )
+        .get_matches();
+    match matches.subcommand() {
+        Some(("copy", sub_matches)) => Opts {
+            command: Command::Copy(Copy{
+                image: PathBuf::from(sub_matches.get_one::<String>("IMAGE").unwrap()),
+                dest: PathBuf::from(sub_matches.get_one::<String>("DESTINY").unwrap())
+            }),
+        },
+        _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
+    }
 }
 
 fn append(path: PathBuf) -> PathBuf {
@@ -128,7 +150,7 @@ fn copy(c: Copy) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let opts = Opts::parse();
+    let opts = parser();
 
     match opts.command {
         Command::Copy(c) => copy(c),
