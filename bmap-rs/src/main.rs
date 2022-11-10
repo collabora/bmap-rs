@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
-use clap::{arg, command, ArgMatches, Command};
+use clap::{arg, command, Command};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
@@ -38,16 +38,6 @@ struct Copy {
     image: Image,
     dest: PathBuf,
 }
-impl Copy {
-    fn parse(input: &ArgMatches) -> Copy {
-        let image = match Url::parse(input.get_one::<String>("IMAGE").unwrap()) {
-            Ok(url) => Image::Url(url),
-            Err(_) => Image::Path(PathBuf::from(input.get_one::<String>("IMAGE").unwrap())),
-        };
-        let dest = PathBuf::from(input.get_one::<String>("DESTINY").unwrap());
-        Copy { image, dest }
-    }
-}
 
 #[derive(Debug)]
 
@@ -74,7 +64,17 @@ fn parser() -> Opts {
         .get_matches();
     match matches.subcommand() {
         Some(("copy", sub_matches)) => Opts {
-            command: Subcommand::Copy(Copy::parse(sub_matches)),
+            command: Subcommand::Copy({
+                Copy {
+                    image: match Url::parse(sub_matches.get_one::<String>("IMAGE").unwrap()) {
+                        Ok(url) => Image::Url(url),
+                        Err(_) => Image::Path(PathBuf::from(
+                            sub_matches.get_one::<String>("IMAGE").unwrap(),
+                        )),
+                    },
+                    dest: PathBuf::from(sub_matches.get_one::<String>("DESTINY").unwrap()),
+                }
+            }),
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
