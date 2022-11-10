@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
-use clap::{arg, command, ArgMatches, Command as Command_clap};
+use clap::{arg, command, ArgMatches, Command};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
@@ -51,13 +51,13 @@ impl Copy {
 
 #[derive(Debug)]
 
-enum Command {
+enum Subcommand {
     Copy(Copy),
 }
 
 #[derive(Debug)]
 struct Opts {
-    command: Command,
+    command: Subcommand,
 }
 
 fn parser() -> Opts {
@@ -66,7 +66,7 @@ fn parser() -> Opts {
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
-            Command_clap::new("copy")
+            Command::new("copy")
                 .about("Copy disk image to destiny")
                 .arg(arg!([IMAGE]).required(true))
                 .arg(arg!([DESTINY]).required(true)),
@@ -74,7 +74,7 @@ fn parser() -> Opts {
         .get_matches();
     match matches.subcommand() {
         Some(("copy", sub_matches)) => Opts {
-            command: Command::Copy(Copy::parse(sub_matches)),
+            command: Subcommand::Copy(Copy::parse(sub_matches)),
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
@@ -183,6 +183,6 @@ fn main() -> Result<()> {
     let opts = parser();
 
     match opts.command {
-        Command::Copy(c) => copy(c),
+        Subcommand::Copy(c) => copy(c),
     }
 }
