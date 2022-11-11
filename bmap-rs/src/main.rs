@@ -19,17 +19,17 @@ enum Image {
 }
 
 impl Image {
-    fn path(self) -> PathBuf {
+    fn path(self) -> Result<PathBuf> {
         if let Image::Path(c) = self {
-            c
+            Ok(c)
         } else {
-            panic!("Not a path")
+            bail!("Not a path")
         }
     }
 
     // Commented to avoid unused code warning
-    //fn url(self) -> Url {
-    //    if let Image::Url(d) = self { d } else { panic!("Not a url") }
+    //fn url(self) -> Result<Url> {
+    //    if let Image::Url(d) = self { Ok(d) } else { bail!("Not a url") }
     //}
 }
 
@@ -141,7 +141,7 @@ fn setup_input(path: &Path) -> Result<Decoder> {
 }
 
 fn copy(c: Copy) -> Result<()> {
-    let image = c.image.path();
+    let image = c.image.path()?;
     if !image.exists() {
         bail!("Image file doesn't exist")
     }
