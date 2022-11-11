@@ -18,6 +18,7 @@ enum Image {
     Url(Url),
 }
 
+#[allow(dead_code)] // To be erased when remote input implemented
 impl Image {
     fn path(self) -> Result<PathBuf> {
         if let Image::Path(c) = self {
@@ -27,10 +28,13 @@ impl Image {
         }
     }
 
-    // Commented to avoid unused code warning
-    //fn url(self) -> Result<Url> {
-    //    if let Image::Url(d) = self { Ok(d) } else { bail!("Not a url") }
-    //}
+    fn url(self) -> Result<Url> {
+        if let Image::Url(d) = self {
+            Ok(d)
+        } else {
+            bail!("Not a url")
+        }
+    }
 }
 
 #[derive(Debug)]
