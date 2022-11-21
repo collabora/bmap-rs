@@ -1,3 +1,6 @@
+//! Bmap-rs is an application that handles the use of bmap crate.
+//!
+//! It allows you to copy files or flash block devices safely.
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};

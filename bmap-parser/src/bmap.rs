@@ -2,6 +2,7 @@ use strum::{Display, EnumDiscriminants, EnumString};
 use thiserror::Error;
 mod xml;
 
+/// Hash type to be used to build the checksum at blocks.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, EnumString, Display)]
 #[strum(serialize_all = "lowercase")]
 #[non_exhaustive]
@@ -9,6 +10,7 @@ pub enum HashType {
     Sha256,
 }
 
+/// Value holder for the block's checksum.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, EnumDiscriminants)]
 #[non_exhaustive]
 pub enum HashValue {
@@ -16,12 +18,14 @@ pub enum HashValue {
 }
 
 impl HashValue {
+    /// Returns the hash type used  in the HashValue.
     pub fn to_type(&self) -> HashType {
         match self {
             HashValue::Sha256(_) => HashType::Sha256,
         }
     }
 
+    /// Returns the value of the checksum in the HashValue.
     pub fn as_slice(&self) -> &[u8] {
         match self {
             HashValue::Sha256(v) => v,
@@ -29,6 +33,7 @@ impl HashValue {
     }
 }
 
+/// Reference to a mapped block of data that contain its checksum.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockRange {
     offset: u64,
@@ -37,6 +42,7 @@ pub struct BlockRange {
 }
 
 impl BlockRange {
+    /// Returns the checksum of the data mapped in the range of the block.
     pub fn checksum(&self) -> HashValue {
         self.checksum
     }
@@ -50,6 +56,7 @@ impl BlockRange {
     }
 }
 
+/// Contains the bmap file information, including a vector of blocks.
 #[derive(Clone, Debug)]
 pub struct Bmap {
     image_size: u64,
@@ -61,6 +68,7 @@ pub struct Bmap {
 }
 
 impl Bmap {
+    /// Returns a BmapBuilder.
     pub fn builder() -> BmapBuilder {
         BmapBuilder::default()
     }
@@ -77,6 +85,7 @@ impl Bmap {
         self.block_size
     }
 
+    /// Returns the number of blocks.
     pub fn blocks(&self) -> u64 {
         self.blocks
     }
@@ -85,34 +94,47 @@ impl Bmap {
         self.mapped_blocks
     }
 
+    /// Returns the type of Hash used for the checksum.
     pub fn checksum_type(&self) -> HashType {
         self.checksum_type
     }
 
+    /// Returns an iterator of BlockRange.
     pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
+
+    /// Returns the total size of mapped memory, it can be bigger than the image size.
     pub fn total_mapped_size(&self) -> u64 {
         self.block_size * self.mapped_blocks
     }
 }
 
+/// The error type returned by BmapBuilder.
+///
+/// This error indicates that the Bmap could not be built correctly. It also points at the field that originated the error.
 #[derive(Clone, Debug, Error)]
 pub enum BmapBuilderError {
     #[error("Image size missing")]
     MissingImageSize,
     #[error("Block size missing")]
     MissingBlockSize,
+    /// Error that indicates the number of blocks is missing.
     #[error("Blocks missing")]
     MissingBlocks,
+    /// Error that indicates the number of mapped blocks is missing.
     #[error("Mapped blocks missing")]
     MissingMappedBlocks,
     #[error("Checksum type missing")]
     MissingChecksumType,
+    /// Error that indicates there are not BlockRanges in the vector.
     #[error("No block ranges")]
     NoBlockRanges,
 }
 
+/// Intermediary tool to generate Bmap.
+///
+/// Contains the same data fields as a Bmap, but most of them as Option. Allowing a progressive parsing and then a casting into Bmap.
 #[derive(Clone, Debug, Default)]
 pub struct BmapBuilder {
     image_size: Option<u64>,
@@ -149,6 +171,7 @@ impl BmapBuilder {
         self
     }
 
+    /// Add a BlockRange to the vector indicating start, end and checksum. Needs Blocksize and Image to be set first. Returns the BmapBuilder.
     pub fn add_block_range(&mut self, start: u64, end: u64, checksum: HashValue) -> &mut Self {
         let bs = self.block_size.expect("Blocksize needs to be set first");
         let total = self.image_size.expect("Image size needs to be set first");
@@ -157,6 +180,7 @@ impl BmapBuilder {
         self.add_byte_range(offset, length, checksum)
     }
 
+    /// Add a BlockRange to the vector indicating offset, length and checksum.  Returns the BmapBuilder.
     pub fn add_byte_range(&mut self, offset: u64, length: u64, checksum: HashValue) -> &mut Self {
         let range = BlockRange {
             offset,
@@ -167,6 +191,7 @@ impl BmapBuilder {
         self
     }
 
+    /// Returns a Bmap or an Error as a Result.
     pub fn build(self) -> Result<Bmap, BmapBuilderError> {
         let image_size = self.image_size.ok_or(BmapBuilderError::MissingImageSize)?;
         let block_size = self.block_size.ok_or(BmapBuilderError::MissingBlockSize)?;

@@ -1,3 +1,5 @@
+//! Bmap is a library for Rust that allows you to copy files
+//! or flash block devices safely.
 mod bmap;
 pub use crate::bmap::*;
 mod discarder;
@@ -36,6 +38,7 @@ impl<T: AsyncSeek + Unpin + Send> AsyncSeekForward for T {
     }
 }
 
+/// The error type returned by copy functions.
 #[derive(Debug, Error)]
 pub enum CopyError {
     #[error("Failed to Read: {0}")]
@@ -48,6 +51,9 @@ pub enum CopyError {
     UnexpectedEof,
 }
 
+/// Copy a file into another or flash a block device, using a Bmap file.
+///
+/// For each block checks its checksum.
 pub fn copy<I, O>(input: &mut I, output: &mut O, map: &Bmap) -> Result<(), CopyError>
 where
     I: Read + SeekForward,

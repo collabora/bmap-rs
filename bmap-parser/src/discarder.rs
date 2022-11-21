@@ -6,7 +6,7 @@ use std::io::Result as IOResult;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-/// Adaptor that implements SeekForward on types only implementing Read by discarding data
+/// Adaptor that implements SeekForward on types only implementing Read by discarding data.
 pub struct Discarder<R: Read> {
     reader: R,
 }
