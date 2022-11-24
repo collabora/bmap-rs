@@ -3,6 +3,10 @@ name = "bmap"
 version = "0.1.0"
 authors = ["Sjoerd Simons <sjoerd@collabora.com>"]
 edition = "2018"
+license = "MIT AND Apache-2.0"
+description = "bmap is a library for Rust that allows you to copy files or flash block devices safely"
+repository = "https://github.com/collabora/bmap-rs"
+readme = "../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
