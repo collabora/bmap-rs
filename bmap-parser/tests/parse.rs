@@ -1,4 +1,4 @@
-use bmap::Bmap;
+use bmap_parser::Bmap;
 use digest::Digest;
 use sha2::Sha256;
 

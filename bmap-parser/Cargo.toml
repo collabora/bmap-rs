@@ -1,10 +1,10 @@
 [package]
-name = "bmap"
+name = "bmap-parser"
 version = "0.1.0"
 authors = ["Sjoerd Simons <sjoerd@collabora.com>"]
 edition = "2018"
 license = "MIT AND Apache-2.0"
-description = "bmap is a library for Rust that allows you to copy files or flash block devices safely"
+description = "bmap-parser is a library for Rust that allows you to copy files or flash block devices safely"
 repository = "https://github.com/collabora/bmap-rs"
 readme = "../README.md"
 
