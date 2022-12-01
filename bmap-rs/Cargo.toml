@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 bmap = { path = "../bmap" }
 anyhow = "1.0.66"
-nix = "0.25.0"
+nix = "0.26.1"
 flate2 = "1.0.24"
 clap = { version = "4.0.18", features = ["derive"] }
 indicatif = "0.17.1"
