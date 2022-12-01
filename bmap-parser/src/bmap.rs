@@ -57,6 +57,7 @@ pub struct Bmap {
     blocks: u64,
     mapped_blocks: u64,
     checksum_type: HashType,
+    bmap_file_checksum: String,
     blockmap: Vec<BlockRange>,
 }
 
@@ -92,6 +93,11 @@ impl Bmap {
     pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
+
+    pub fn bmap_file_checksum(&self) -> String {
+        self.bmap_file_checksum.clone()
+    }
+
     pub fn total_mapped_size(&self) -> u64 {
         self.block_size * self.mapped_blocks
     }
@@ -109,6 +115,8 @@ pub enum BmapBuilderError {
     MissingMappedBlocks,
     #[error("Checksum type missing")]
     MissingChecksumType,
+    #[error("Bmap file checksum missing")]
+    MissingBmapFileChecksum,
     #[error("No block ranges")]
     NoBlockRanges,
 }
@@ -120,6 +128,7 @@ pub struct BmapBuilder {
     blocks: Option<u64>,
     checksum_type: Option<HashType>,
     mapped_blocks: Option<u64>,
+    bmap_file_checksum: Option<String>,
     blockmap: Vec<BlockRange>,
 }
 
@@ -146,6 +155,11 @@ impl BmapBuilder {
 
     pub fn checksum_type(&mut self, checksum_type: HashType) -> &mut Self {
         self.checksum_type = Some(checksum_type);
+        self
+    }
+
+    pub fn bmap_file_checksum(&mut self, bmap_file_checksum: String) -> &mut Self {
+        self.bmap_file_checksum = Some(bmap_file_checksum);
         self
     }
 
@@ -177,6 +191,9 @@ impl BmapBuilder {
         let checksum_type = self
             .checksum_type
             .ok_or(BmapBuilderError::MissingChecksumType)?;
+        let bmap_file_checksum = self
+            .bmap_file_checksum
+            .ok_or(BmapBuilderError::MissingBmapFileChecksum)?;
         let blockmap = self.blockmap;
 
         Ok(Bmap {
@@ -185,6 +202,7 @@ impl BmapBuilder {
             blocks,
             mapped_blocks,
             checksum_type,
+            bmap_file_checksum,
             blockmap,
         })
     }
