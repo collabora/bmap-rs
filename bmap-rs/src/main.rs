@@ -7,6 +7,7 @@ use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
 use reqwest::{Response, Url};
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
@@ -158,6 +159,24 @@ async fn setup_remote_input(url: Url) -> Result<Response> {
     }
 }
 
+fn bmap_integrity(checksum: String, xml: String) -> Result<()> {
+    //Unset the checksum
+    let mut bmap_hash = Sha256::new();
+    let default = "0".repeat(64);
+    let before_checksum = xml.replace(&checksum, &default);
+
+    //Compare given and created checksum
+    bmap_hash.update(before_checksum);
+    let digest = bmap_hash.finalize_reset();
+    let new_checksum = hex::encode(digest.as_slice());
+    ensure!(
+        checksum == new_checksum,
+        "Bmap file doesn't match its checksum. It could be corrupted or compromised."
+    );
+    println!("Bmap integrity checked!");
+    Ok(())
+}
+
 fn setup_progress_bar(bmap: &Bmap) -> ProgressBar {
     let pb = ProgressBar::new(bmap.total_mapped_size());
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
@@ -204,6 +223,7 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
     b.read_to_string(&mut xml)?;
 
     let bmap = Bmap::from_xml(&xml)?;
+    bmap_integrity(bmap.bmap_file_checksum(), xml)?;
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
