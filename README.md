@@ -15,6 +15,8 @@ Right now the implemented function is copying system images files using bmap, wh
 safer and faster than regular cp or dd. It can be used to flash system images into block
 devices, but it can also be used for general image flashing purposes.
 
+[![Bors enabled](https://bors.tech/images/badge_small.svg)](https://app.bors.tech/repositories/48555)
+
 ## Usage
 bmap-rs supports 1 subcommand:
 - "copy" - copy a file to another file using a bmap file.
