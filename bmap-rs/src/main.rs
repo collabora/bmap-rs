@@ -1,16 +1,19 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
-use bmap::{Bmap, Discarder, SeekForward};
+use async_compression::futures::bufread::GzipDecoder;
+use bmap::{AsyncDiscarder, Bmap, Discarder, SeekForward};
 use clap::{arg, command, Command};
 use flate2::read::GzDecoder;
+use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
+use reqwest::{Response, Url};
 use std::ffi::OsStr;
-use reqwest::Url;
 use std::fmt::Write;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 #[derive(Debug)]
 enum Image {
@@ -118,7 +121,7 @@ impl SeekForward for Decoder {
     }
 }
 
-fn setup_input(path: &Path) -> Result<Decoder> {
+fn setup_local_input(path: &Path) -> Result<Decoder> {
     let f = File::open(path)?;
     match path.extension().and_then(OsStr::to_str) {
         Some("gz") => {
@@ -126,6 +129,17 @@ fn setup_input(path: &Path) -> Result<Decoder> {
             Ok(Decoder::new(Discarder::new(gz)))
         }
         _ => Ok(Decoder::new(f)),
+    }
+}
+
+async fn setup_remote_input(url: Url) -> Result<Response> {
+    match PathBuf::from(url.path())
+        .extension()
+        .and_then(OsStr::to_str)
+    {
+        Some("gz") => reqwest::get(url).await.map_err(anyhow::Error::new),
+        None => bail!("No file extension found"),
+        _ => bail!("Image file format not implemented"),
     }
 }
 
@@ -146,10 +160,10 @@ fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata
     Ok(())
 }
 
-fn copy(c: Copy) -> Result<()> {
+async fn copy(c: Copy) -> Result<()> {
     match c.image {
         Image::Path(path) => copy_local_input(path, c.dest),
-        Image::Url(url) => todo!(),
+        Image::Url(url) => copy_remote_input(url, c.dest).await,
     }
 }
 
@@ -170,22 +184,61 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
 
     setup_output(&output, &bmap, output.metadata()?)?;
 
-
-    let mut input = setup_input(&source)?;
+    let mut input = setup_local_input(&source)?;
     let pb = setup_progress_bar(&bmap);
     bmap::copy(&mut input, &mut pb.wrap_write(&output), &bmap)?;
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
-    output.sync_all().expect("Sync failure");
+    output.sync_all()?;
 
     Ok(())
 }
 
-fn main() -> Result<()> {
+async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
+    let bmap = find_bmap(&PathBuf::from(source.path())).unwrap();
+    println!("Found bmap file: {}", bmap.display());
+
+    let mut b = File::open(&bmap).context("Failed to open bmap file")?;
+    let mut xml = String::new();
+    b.read_to_string(&mut xml)?;
+
+    let bmap = Bmap::from_xml(&xml)?;
+    let mut output = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(destination)
+        .await?;
+
+    setup_output(&output, &bmap, output.metadata().await?)?;
+
+    let res = setup_remote_input(source).await?;
+    let stream = res
+        .bytes_stream()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .into_async_read();
+    let reader = GzipDecoder::new(stream);
+    let mut input = AsyncDiscarder::new(reader);
+    let pb = setup_progress_bar(&bmap);
+    bmap::copy_async(
+        &mut input,
+        &mut pb.wrap_async_write(&mut output).compat(),
+        &bmap,
+    )
+    .await?;
+    pb.finish_and_clear();
+
+    println!("Done: Syncing...");
+    output.sync_all().await?;
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     let opts = Opts::parser();
 
     match opts.command {
-        Subcommand::Copy(c) => copy(c),
+        Subcommand::Copy(c) => copy(c).await,
     }
 }

@@ -1,6 +1,10 @@
-use crate::SeekForward;
+use crate::{AsyncSeekForward, SeekForward};
+use async_trait::async_trait;
+use futures::io::{AsyncRead, AsyncReadExt};
 use std::io::Read;
 use std::io::Result as IOResult;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// Adaptor that implements SeekForward on types only implementing Read by discarding data
 pub struct Discarder<R: Read> {
@@ -30,6 +34,44 @@ impl<R: Read> SeekForward for Discarder<R> {
         while left > 0 {
             let toread = left.min(buf.len());
             let r = self.reader.read(&mut buf[0..toread])?;
+            left -= r;
+        }
+        Ok(())
+    }
+}
+
+pub struct AsyncDiscarder<R: AsyncRead> {
+    reader: R,
+}
+
+impl<R: AsyncRead> AsyncDiscarder<R> {
+    pub fn new(reader: R) -> Self {
+        Self { reader }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<IOResult<usize>> {
+        Pin::new(&mut self.reader).poll_read(cx, buf)
+    }
+}
+
+#[async_trait(?Send)]
+impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
+    async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
+        let mut buf = [0; 4096];
+        let mut left = forward as usize;
+        while left > 0 {
+            let toread = left.min(buf.len());
+            let r = self.read(&mut buf[0..toread]).await?;
             left -= r;
         }
         Ok(())
