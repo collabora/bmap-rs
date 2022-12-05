@@ -1,32 +1,72 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use bmap::{Bmap, Discarder, SeekForward};
-use clap::Parser;
+use clap::{arg, command, Command};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
 use std::ffi::OsStr;
+use reqwest::Url;
 use std::fmt::Write;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
+enum Image {
+    Path(PathBuf),
+    Url(Url),
+}
+
+#[derive(Debug)]
 struct Copy {
-    image: PathBuf,
+    image: Image,
     dest: PathBuf,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
 
-enum Command {
+enum Subcommand {
     Copy(Copy),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug)]
 struct Opts {
-    #[command(subcommand)]
-    command: Command,
+    command: Subcommand,
+}
+
+impl Opts {
+    fn parser() -> Opts {
+        let matches = command!()
+            .propagate_version(true)
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("copy")
+                    .about("Copy image to block device or file")
+                    .arg(arg!([IMAGE]).required(true))
+                    .arg(arg!([DESTINATION]).required(true)),
+            )
+            .get_matches();
+        match matches.subcommand() {
+            Some(("copy", sub_matches)) => Opts {
+                command: Subcommand::Copy({
+                    Copy {
+                        image: match Url::parse(sub_matches.get_one::<String>("IMAGE").unwrap()) {
+                            Ok(url) => Image::Url(url),
+                            Err(_) => Image::Path(PathBuf::from(
+                                sub_matches.get_one::<String>("IMAGE").unwrap(),
+                            )),
+                        },
+                        dest: PathBuf::from(sub_matches.get_one::<String>("DESTINATION").unwrap()),
+                    }
+                }),
+            },
+            _ => unreachable!(
+                "Exhausted list of subcommands and subcommand_required prevents `None`"
+            ),
+        }
+    }
 }
 
 fn append(path: PathBuf) -> PathBuf {
@@ -90,11 +130,15 @@ fn setup_input(path: &Path) -> Result<Decoder> {
 }
 
 fn copy(c: Copy) -> Result<()> {
-    if !c.image.exists() {
-        bail!("Image file doesn't exist")
+    match c.image {
+        Image::Path(path) => copy_local_input(path, c.dest),
+        Image::Url(url) => todo!(),
     }
+}
 
-    let bmap = find_bmap(&c.image).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
+fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
+    ensure!(source.exists(), "Image file doesn't exist");
+    let bmap = find_bmap(&source).ok_or_else(|| anyhow!("Couldn't find bmap file"))?;
     println!("Found bmap file: {}", bmap.display());
 
     let mut b = File::open(&bmap).context("Failed to open bmap file")?;
@@ -105,14 +149,14 @@ fn copy(c: Copy) -> Result<()> {
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
-        .open(c.dest)?;
+        .open(destination)?;
 
     if output.metadata()?.is_file() {
         ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
             .context("Failed to truncate file")?;
     }
 
-    let mut input = setup_input(&c.image)?;
+    let mut input = setup_input(&source)?;
     let pb = ProgressBar::new(bmap.total_mapped_size());
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
         .unwrap()
@@ -128,9 +172,9 @@ fn copy(c: Copy) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let opts = Opts::parse();
+    let opts = Opts::parser();
 
     match opts.command {
-        Command::Copy(c) => copy(c),
+        Subcommand::Copy(c) => copy(c),
     }
 }
