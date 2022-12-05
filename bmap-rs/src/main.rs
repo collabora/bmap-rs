@@ -94,6 +94,13 @@ fn find_bmap(img: &Path) -> Option<PathBuf> {
     }
 }
 
+fn find_remote_bmap(mut url: Url) -> Result<Url> {
+    let mut path = PathBuf::from(url.path());
+    path.set_extension("bmap");
+    url.set_path(path.to_str().unwrap());
+    Ok(url)
+}
+
 trait ReadSeekForward: SeekForward + Read {}
 impl<T: Read + SeekForward> ReadSeekForward for T {}
 
@@ -196,12 +203,10 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
 }
 
 async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
-    let bmap = find_bmap(&PathBuf::from(source.path())).unwrap();
-    println!("Found bmap file: {}", bmap.display());
+    let bmap_url = find_remote_bmap(source.clone())?;
 
-    let mut b = File::open(&bmap).context("Failed to open bmap file")?;
-    let mut xml = String::new();
-    b.read_to_string(&mut xml)?;
+    let xml = reqwest::get(bmap_url.clone()).await?.text().await?;
+    println!("Found bmap file: {}", bmap_url);
 
     let bmap = Bmap::from_xml(&xml)?;
     let mut output = tokio::fs::OpenOptions::new()
