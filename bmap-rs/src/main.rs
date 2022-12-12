@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
-use clap::{arg, command, Command};
+use clap::{arg, command, Arg, ArgAction, Command};
 use flate2::read::GzDecoder;
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
@@ -25,6 +25,7 @@ enum Image {
 struct Copy {
     image: Image,
     dest: PathBuf,
+    nobmap: bool,
 }
 
 #[derive(Debug)]
@@ -48,7 +49,13 @@ impl Opts {
                 Command::new("copy")
                     .about("Copy image to block device or file")
                     .arg(arg!([IMAGE]).required(true))
-                    .arg(arg!([DESTINATION]).required(true)),
+                    .arg(arg!([DESTINATION]).required(true))
+                    .arg(
+                        Arg::new("nobmap")
+                            .short('n')
+                            .long("nobmap")
+                            .action(ArgAction::SetTrue),
+                    ),
             )
             .get_matches();
         match matches.subcommand() {
@@ -62,6 +69,7 @@ impl Opts {
                             )),
                         },
                         dest: PathBuf::from(sub_matches.get_one::<String>("DESTINATION").unwrap()),
+                        nobmap: sub_matches.get_flag("nobmap"),
                     }
                 }),
             },
@@ -174,9 +182,15 @@ fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata
 }
 
 async fn copy(c: Copy) -> Result<()> {
-    match c.image {
-        Image::Path(path) => copy_local_input(path, c.dest),
-        Image::Url(url) => copy_remote_input(url, c.dest).await,
+    match c.nobmap {
+        true => match c.image {
+            Image::Path(path) => copy_local_input_nobmap(path, c.dest),
+            Image::Url(url) => copy_remote_input_nobmap(url, c.dest).await,
+        },
+        false => match c.image {
+            Image::Path(path) => copy_local_input(path, c.dest),
+            Image::Url(url) => copy_remote_input(url, c.dest).await,
+        },
     }
 }
 
