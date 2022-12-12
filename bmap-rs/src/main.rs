@@ -235,6 +235,26 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
 
     println!("Done: Syncing...");
     output.sync_all().await?;
+    Ok(())
+}
+
+fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> {
+    ensure!(source.exists(), "Image file doesn't exist");
+
+    let output = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(destination)?;
+
+    let mut input = setup_local_input(&source)?;
+
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    bmap_parser::copy_nobmap(&mut input, &mut pb.wrap_write(&output))?;
+    pb.finish_and_clear();
+
+    println!("Done: Syncing...");
+    output.sync_all().expect("Sync failure");
 
     Ok(())
 }
