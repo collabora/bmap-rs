@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "bmap",
+  "bmap-parser",
   "bmap-rs",
 ]
 

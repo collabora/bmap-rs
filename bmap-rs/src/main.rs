@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
-use bmap::{AsyncDiscarder, Bmap, Discarder, SeekForward};
+use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
 use clap::{arg, command, Command};
 use flate2::read::GzDecoder;
 use futures::TryStreamExt;
@@ -193,7 +193,7 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
 
     let mut input = setup_local_input(&source)?;
     let pb = setup_progress_bar(&bmap);
-    bmap::copy(&mut input, &mut pb.wrap_write(&output), &bmap)?;
+    bmap_parser::copy(&mut input, &mut pb.wrap_write(&output), &bmap)?;
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
@@ -225,7 +225,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     let reader = GzipDecoder::new(stream);
     let mut input = AsyncDiscarder::new(reader);
     let pb = setup_progress_bar(&bmap);
-    bmap::copy_async(
+    bmap_parser::copy_async(
         &mut input,
         &mut pb.wrap_async_write(&mut output).compat(),
         &bmap,
