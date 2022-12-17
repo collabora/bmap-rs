@@ -259,6 +259,31 @@ fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> 
     Ok(())
 }
 
+async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<()> {
+    let mut output = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(destination)
+        .await?;
+
+    let res = setup_remote_input(source).await?;
+    let stream = res
+        .bytes_stream()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .into_async_read();
+    let reader = GzipDecoder::new(stream);
+    let mut input = AsyncDiscarder::new(reader);
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    bmap_parser::copy_async_nobmap(&mut input, &mut pb.wrap_async_write(&mut output).compat())
+        .await?;
+    pb.finish_and_clear();
+
+    println!("Done: Syncing...");
+    output.sync_all().await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Opts::parser();
