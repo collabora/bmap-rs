@@ -157,3 +157,14 @@ where
     std::io::copy(input, output).map_err(CopyError::WriteError)?;
     Ok(())
 }
+
+pub async fn copy_async_nobmap<I, O>(input: &mut I, output: &mut O) -> Result<(), CopyError>
+where
+    I: AsyncRead + AsyncSeekForward + Unpin,
+    O: AsyncWrite + AsyncSeekForward + Unpin,
+{
+    futures::io::copy(input, output)
+        .map_err(CopyError::WriteError)
+        .await?;
+    Ok(())
+}
