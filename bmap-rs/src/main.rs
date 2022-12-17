@@ -159,6 +159,12 @@ fn setup_progress_bar(bmap: &Bmap) -> ProgressBar {
     pb
 }
 
+fn setup_spinner() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    pb
+}
+
 fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata) -> Result<()> {
     if metadata.is_file() {
         ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
@@ -248,8 +254,7 @@ fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> 
 
     let mut input = setup_local_input(&source)?;
 
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    let pb = setup_spinner();
     bmap_parser::copy_nobmap(&mut input, &mut pb.wrap_write(&output))?;
     pb.finish_and_clear();
 
@@ -273,8 +278,7 @@ async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<(
         .into_async_read();
     let reader = GzipDecoder::new(stream);
     let mut input = AsyncDiscarder::new(reader);
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    let pb = setup_spinner();
     bmap_parser::copy_async_nobmap(&mut input, &mut pb.wrap_async_write(&mut output).compat())
         .await?;
     pb.finish_and_clear();
