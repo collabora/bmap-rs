@@ -249,6 +249,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     println!("Found bmap file: {}", bmap_url);
 
     let bmap = Bmap::from_xml(&xml)?;
+    bmap_integrity(bmap.bmap_file_checksum(), xml)?;
     let mut output = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
