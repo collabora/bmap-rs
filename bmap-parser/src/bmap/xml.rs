@@ -6,6 +6,7 @@ use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
 struct Range {
+    #[serde(rename = "@chksum")]
     chksum: String,
     #[serde(rename = "$value")]
     range: String,
@@ -20,6 +21,7 @@ struct BlockMap {
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Bmap {
+    #[serde(rename = "@version")]
     version: String,
     #[serde(rename = "ImageSize")]
     image_size: u64,
