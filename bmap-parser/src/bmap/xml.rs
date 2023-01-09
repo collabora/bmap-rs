@@ -96,6 +96,7 @@ pub(crate) fn from_xml(xml: &str) -> Result<crate::bmap::Bmap, XmlError> {
         .block_size(b.block_size)
         .blocks(b.blocks_count)
         .checksum_type(hash_type)
+        .bmap_file_checksum(b.bmap_file_checksum)
         .mapped_blocks(b.mapped_blocks_count);
 
     for range in b.block_map.ranges {
