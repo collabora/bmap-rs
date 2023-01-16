@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use async_compression::futures::bufread::GzipDecoder;
 use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
-use clap::{arg, command, Command};
+use clap::{arg, command, Arg, ArgAction, Command};
 use flate2::read::GzDecoder;
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
@@ -25,6 +25,7 @@ enum Image {
 struct Copy {
     image: Image,
     dest: PathBuf,
+    nobmap: bool,
 }
 
 #[derive(Debug)]
@@ -48,7 +49,13 @@ impl Opts {
                 Command::new("copy")
                     .about("Copy image to block device or file")
                     .arg(arg!([IMAGE]).required(true))
-                    .arg(arg!([DESTINATION]).required(true)),
+                    .arg(arg!([DESTINATION]).required(true))
+                    .arg(
+                        Arg::new("nobmap")
+                            .short('n')
+                            .long("nobmap")
+                            .action(ArgAction::SetTrue),
+                    ),
             )
             .get_matches();
         match matches.subcommand() {
@@ -62,6 +69,7 @@ impl Opts {
                             )),
                         },
                         dest: PathBuf::from(sub_matches.get_one::<String>("DESTINATION").unwrap()),
+                        nobmap: sub_matches.get_flag("nobmap"),
                     }
                 }),
             },
@@ -159,6 +167,12 @@ fn setup_progress_bar(bmap: &Bmap) -> ProgressBar {
     pb
 }
 
+fn setup_spinner() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
+    pb
+}
+
 fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata) -> Result<()> {
     if metadata.is_file() {
         ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
@@ -168,6 +182,12 @@ fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata
 }
 
 async fn copy(c: Copy) -> Result<()> {
+    if c.nobmap {
+        return match c.image {
+            Image::Path(path) => copy_local_input_nobmap(path, c.dest),
+            Image::Url(url) => copy_remote_input_nobmap(url, c.dest).await,
+        };
+    }
     match c.image {
         Image::Path(path) => copy_local_input(path, c.dest),
         Image::Url(url) => copy_remote_input(url, c.dest).await,
@@ -235,7 +255,50 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
 
     println!("Done: Syncing...");
     output.sync_all().await?;
+    Ok(())
+}
 
+fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> {
+    ensure!(source.exists(), "Image file doesn't exist");
+
+    let output = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(destination)?;
+
+    let mut input = setup_local_input(&source)?;
+
+    let pb = setup_spinner();
+    bmap_parser::copy_nobmap(&mut input, &mut pb.wrap_write(&output))?;
+    pb.finish_and_clear();
+
+    println!("Done: Syncing...");
+    output.sync_all().expect("Sync failure");
+
+    Ok(())
+}
+
+async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<()> {
+    let mut output = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(destination)
+        .await?;
+
+    let res = setup_remote_input(source).await?;
+    let stream = res
+        .bytes_stream()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .into_async_read();
+    let reader = GzipDecoder::new(stream);
+    let mut input = AsyncDiscarder::new(reader);
+    let pb = setup_spinner();
+    bmap_parser::copy_async_nobmap(&mut input, &mut pb.wrap_async_write(&mut output).compat())
+        .await?;
+    pb.finish_and_clear();
+
+    println!("Done: Syncing...");
+    output.sync_all().await?;
     Ok(())
 }
 
