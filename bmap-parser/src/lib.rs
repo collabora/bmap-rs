@@ -57,9 +57,8 @@ where
         HashType::Sha256 => Sha256::new(),
     };
 
-    let mut v = Vec::new();
     // TODO benchmark a reasonable size for this
-    v.resize(8 * 1024 * 1024, 0);
+    let mut v = vec![0; 8 * 1024 * 1024];
 
     let buf = v.as_mut_slice();
     let mut position = 0;
@@ -104,9 +103,9 @@ where
     let mut hasher = match map.checksum_type() {
         HashType::Sha256 => Sha256::new(),
     };
-    let mut v = Vec::new();
+
     // TODO benchmark a reasonable size for this
-    v.resize(8 * 1024 * 1024, 0);
+    let mut v = vec![0; 8 * 1024 * 1024];
 
     let buf = v.as_mut_slice();
     let mut position = 0;
