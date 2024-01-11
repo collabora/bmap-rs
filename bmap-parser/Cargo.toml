@@ -16,7 +16,7 @@ quick-xml = { version = "0.28.2", features = [ "serialize" ] }
 serde = { version = "1.0.147", features = [ "derive" ] }
 anyhow = { version = "1.0.40", optional = true }
 sha2 = { version = "0.10.6", features = [ "asm" ] }
-strum = { version = "0.24.1", features = [ "derive"] }
+strum = { version = "0.25.0", features = [ "derive"] }
 digest = "0.10.5"
 flate2 = "1.0.20"
 async-trait = "0.1.58"
