@@ -11,7 +11,7 @@ use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
@@ -173,10 +173,9 @@ fn setup_spinner() -> ProgressBar {
     pb
 }
 
-fn setup_output<T: AsRawFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata) -> Result<()> {
+fn setup_output<T: AsFd>(output: &T, bmap: &Bmap, metadata: std::fs::Metadata) -> Result<()> {
     if metadata.is_file() {
-        ftruncate(output.as_raw_fd(), bmap.image_size() as i64)
-            .context("Failed to truncate file")?;
+        ftruncate(output.as_fd(), bmap.image_size() as i64).context("Failed to truncate file")?;
     }
     Ok(())
 }
