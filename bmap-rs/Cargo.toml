@@ -13,7 +13,7 @@ readme = "../README.md"
 [dependencies]
 bmap-parser = { path = "../bmap-parser", version = "0.1.0"}
 anyhow = "1.0.66"
-nix = "0.26.1"
+nix = "0.27.1"
 flate2 = "1.0.24"
 clap = { version = "4.0.18", features = ["cargo"] }
 indicatif = { version = "0.17.1", features = ["tokio"] }
