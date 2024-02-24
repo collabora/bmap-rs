@@ -1,6 +1,6 @@
 [package]
 name = "bmap-parser"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Sjoerd Simons <sjoerd@collabora.com>"]
 edition = "2018"
 license = "MIT AND Apache-2.0"
