@@ -64,8 +64,8 @@ impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
     }
 }
 
-#[async_trait(?Send)]
-impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
+#[async_trait]
+impl<R: AsyncRead + Unpin + Send> AsyncSeekForward for AsyncDiscarder<R> {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         let mut buf = [0; 4096];
         let mut left = forward as usize;
@@ -95,7 +95,7 @@ mod test {
             .iter()
             .fold(0, |pos, offset| {
                 let mut byte: u8 = 1;
-                discarder.seek_forward((offset - pos) as u64).unwrap();
+                discarder.seek_forward(offset - pos).unwrap();
                 assert_eq!(1, discarder.read(slice::from_mut(&mut byte)).unwrap());
                 assert_eq!(*offset, byte as u64);
                 *offset + 1

@@ -23,12 +23,12 @@ impl<T: Seek> SeekForward for T {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait AsyncSeekForward {
     async fn async_seek_forward(&mut self, offset: u64) -> IOResult<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<T: AsyncSeek + Unpin + Send> AsyncSeekForward for T {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         self.seek(SeekFrom::Current(forward as i64)).await?;

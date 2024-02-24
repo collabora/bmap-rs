@@ -118,14 +118,16 @@ fn setup_data(basename: &str) -> (Bmap, impl Read + SeekForward) {
     let mut bmapfile = datadir.clone();
     bmapfile.push(format!("{}.bmap", basename));
 
-    let mut b = File::open(&bmapfile).expect(&format!("Failed to open bmap file:{:?}", bmapfile));
+    let mut b =
+        File::open(&bmapfile).unwrap_or_else(|_| panic!("Failed to open bmap file:{:?}", bmapfile));
     let mut xml = String::new();
     b.read_to_string(&mut xml).unwrap();
     let bmap = Bmap::from_xml(&xml).unwrap();
 
     let mut datafile = datadir.clone();
     datafile.push(format!("{}.gz", basename));
-    let g = File::open(&datafile).expect(&format!("Failed to open data file:{:?}", datafile));
+    let g =
+        File::open(&datafile).unwrap_or_else(|_| panic!("Failed to open data file:{:?}", datafile));
     let gz = GzDecoder::new(g);
     let gz = Discarder::new(gz);
 

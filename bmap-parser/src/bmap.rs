@@ -65,33 +65,42 @@ impl Bmap {
         BmapBuilder::default()
     }
 
+    /// Build from a .bmap xml file
     pub fn from_xml(xml: &str) -> Result<Self, xml::XmlError> {
         xml::from_xml(xml)
     }
 
+    /// Image size in bytes
     pub fn image_size(&self) -> u64 {
         self.image_size
     }
 
+    /// block size in bytes
     pub const fn block_size(&self) -> u64 {
         self.block_size
     }
 
+    /// number of blocks in the image
     pub fn blocks(&self) -> u64 {
         self.blocks
     }
 
+    /// number of mapped blocks in the image
     pub fn mapped_blocks(&self) -> u64 {
         self.mapped_blocks
     }
 
+    /// checksum type used
     pub fn checksum_type(&self) -> HashType {
         self.checksum_type
     }
 
+    /// Iterator over the block map
     pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
+
+    /// Total mapped size in bytes
     pub fn total_mapped_size(&self) -> u64 {
         self.block_size * self.mapped_blocks
     }
