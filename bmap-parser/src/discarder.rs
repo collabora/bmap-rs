@@ -64,8 +64,8 @@ impl<R: AsyncRead + Unpin> AsyncRead for AsyncDiscarder<R> {
     }
 }
 
-#[async_trait(?Send)]
-impl<R: AsyncRead + Unpin> AsyncSeekForward for AsyncDiscarder<R> {
+#[async_trait]
+impl<R: AsyncRead + Unpin + Send> AsyncSeekForward for AsyncDiscarder<R> {
     async fn async_seek_forward(&mut self, forward: u64) -> IOResult<()> {
         let mut buf = [0; 4096];
         let mut left = forward as usize;
