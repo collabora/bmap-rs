@@ -95,7 +95,7 @@ mod test {
             .iter()
             .fold(0, |pos, offset| {
                 let mut byte: u8 = 1;
-                discarder.seek_forward((offset - pos) as u64).unwrap();
+                discarder.seek_forward(offset - pos).unwrap();
                 assert_eq!(1, discarder.read(slice::from_mut(&mut byte)).unwrap());
                 assert_eq!(*offset, byte as u64);
                 *offset + 1
