@@ -85,7 +85,7 @@ where
             left -= r;
         }
         let digest = hasher.finalize_reset();
-        if range.checksum().as_slice() != digest.as_slice() {
+        if range.checksum().as_slice() != &digest[..] {
             return Err(CopyError::ChecksumError);
         }
 
@@ -139,7 +139,7 @@ where
             left -= r;
         }
         let digest = hasher.finalize_reset();
-        if range.checksum().as_slice() != digest.as_slice() {
+        if range.checksum().as_slice() != &digest[..] {
             return Err(CopyError::ChecksumError);
         }
 

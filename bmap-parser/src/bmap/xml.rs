@@ -4,11 +4,33 @@ use serde::Deserialize;
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Custom deserializer that trims whitespace before parsing u64
+/// This is needed for compatibility with quick-xml 0.38 which changed
+/// how it handles whitespace in text content
+fn deserialize_trimmed_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.trim().parse().map_err(serde::de::Error::custom)
+}
+
+/// Custom deserializer that trims whitespace from strings
+/// This is needed for compatibility with quick-xml 0.38 which changed
+/// how it handles whitespace in text content
+fn deserialize_trimmed_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(s.trim().to_string())
+}
+
 #[derive(Debug, Deserialize)]
 struct Range {
     #[serde(rename = "@chksum")]
     chksum: String,
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", deserialize_with = "deserialize_trimmed_string")]
     range: String,
 }
 
@@ -23,17 +45,26 @@ struct BlockMap {
 struct Bmap {
     #[serde(rename = "@version")]
     version: String,
-    #[serde(rename = "ImageSize")]
+    #[serde(rename = "ImageSize", deserialize_with = "deserialize_trimmed_u64")]
     image_size: u64,
-    #[serde(rename = "BlockSize")]
+    #[serde(rename = "BlockSize", deserialize_with = "deserialize_trimmed_u64")]
     block_size: u64,
-    #[serde(rename = "BlocksCount")]
+    #[serde(rename = "BlocksCount", deserialize_with = "deserialize_trimmed_u64")]
     blocks_count: u64,
-    #[serde(rename = "MappedBlocksCount")]
+    #[serde(
+        rename = "MappedBlocksCount",
+        deserialize_with = "deserialize_trimmed_u64"
+    )]
     mapped_blocks_count: u64,
-    #[serde(rename = "ChecksumType")]
+    #[serde(
+        rename = "ChecksumType",
+        deserialize_with = "deserialize_trimmed_string"
+    )]
     checksum_type: String,
-    #[serde(rename = "BmapFileChecksum")]
+    #[serde(
+        rename = "BmapFileChecksum",
+        deserialize_with = "deserialize_trimmed_string"
+    )]
     bmap_file_checksum: String,
     #[serde(rename = "BlockMap")]
     block_map: BlockMap,
@@ -79,7 +110,7 @@ fn str_to_digest(s: String, digest: &mut [u8]) -> Result<(), XmlError> {
             Some(v) => v,
             None => return Err(XmlError::InvalidChecksum(s)),
         };
-        digest[i] = hi << 4 | lo;
+        digest[i] = (hi << 4) | lo;
     }
 
     Ok(())
