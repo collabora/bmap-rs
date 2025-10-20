@@ -91,7 +91,7 @@ fn str_to_digest(s: String, digest: &mut [u8]) -> Result<(), XmlError> {
             Some(v) => v,
             None => return Err(XmlError::InvalidChecksum(s)),
         };
-        digest[i] = hi << 4 | lo;
+        digest[i] = (hi << 4) | lo;
     }
 
     Ok(())

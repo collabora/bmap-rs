@@ -18,7 +18,7 @@ fn parse() {
         assert_eq!((block + 1) * 4096, range.length());
 
         let digest = Sha256::digest(format!("{}", block).as_bytes());
-        assert_eq!(digest.as_slice(), range.checksum().as_slice());
+        assert_eq!(&digest[..], range.checksum().as_slice());
 
         block = if block == 0 { 8 } else { block * 4 };
     }
