@@ -51,11 +51,20 @@ struct Bmap {
     block_size: u64,
     #[serde(rename = "BlocksCount", deserialize_with = "deserialize_trimmed_u64")]
     blocks_count: u64,
-    #[serde(rename = "MappedBlocksCount", deserialize_with = "deserialize_trimmed_u64")]
+    #[serde(
+        rename = "MappedBlocksCount",
+        deserialize_with = "deserialize_trimmed_u64"
+    )]
     mapped_blocks_count: u64,
-    #[serde(rename = "ChecksumType", deserialize_with = "deserialize_trimmed_string")]
+    #[serde(
+        rename = "ChecksumType",
+        deserialize_with = "deserialize_trimmed_string"
+    )]
     checksum_type: String,
-    #[serde(rename = "BmapFileChecksum", deserialize_with = "deserialize_trimmed_string")]
+    #[serde(
+        rename = "BmapFileChecksum",
+        deserialize_with = "deserialize_trimmed_string"
+    )]
     bmap_file_checksum: String,
     #[serde(rename = "BlockMap")]
     block_map: BlockMap,
@@ -101,7 +110,7 @@ fn str_to_digest(s: String, digest: &mut [u8]) -> Result<(), XmlError> {
             Some(v) => v,
             None => return Err(XmlError::InvalidChecksum(s)),
         };
-        digest[i] = hi << 4 | lo;
+        digest[i] = (hi << 4) | lo;
     }
 
     Ok(())
