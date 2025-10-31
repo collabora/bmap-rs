@@ -21,3 +21,6 @@ digest = "0.10.5"
 flate2 = "1.0.20"
 async-trait = "0.1.58"
 futures = "0.3.25"
+
+[features]
+progress_bar = []
