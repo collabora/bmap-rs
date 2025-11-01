@@ -9,3 +9,6 @@ members = [
 # slow
 [profile.dev]
 opt-level = 3
+
+[workspace.package]
+rust-version = "1.85"
