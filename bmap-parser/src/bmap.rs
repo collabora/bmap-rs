@@ -96,7 +96,7 @@ impl Bmap {
     }
 
     /// Iterator over the block map
-    pub fn block_map(&self) -> impl ExactSizeIterator + Iterator<Item = &BlockRange> {
+    pub fn block_map(&self) -> impl ExactSizeIterator<Item = &BlockRange> {
         self.blockmap.iter()
     }
 

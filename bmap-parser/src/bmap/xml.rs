@@ -4,11 +4,23 @@ use serde::Deserialize;
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Custom deserializer to first trim whitespace around text elements before converting.
+/// Should be unnecessary once https://github.com/tafia/quick-xml/issues/900 gets fixed
+fn deserialize_trimmed<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    let s = <&str>::deserialize(deserializer)?;
+    s.trim().parse().map_err(serde::de::Error::custom)
+}
+
 #[derive(Debug, Deserialize)]
 struct Range {
     #[serde(rename = "@chksum")]
     chksum: String,
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", deserialize_with = "deserialize_trimmed")]
     range: String,
 }
 
@@ -23,17 +35,17 @@ struct BlockMap {
 struct Bmap {
     #[serde(rename = "@version")]
     version: String,
-    #[serde(rename = "ImageSize")]
+    #[serde(rename = "ImageSize", deserialize_with = "deserialize_trimmed")]
     image_size: u64,
-    #[serde(rename = "BlockSize")]
+    #[serde(rename = "BlockSize", deserialize_with = "deserialize_trimmed")]
     block_size: u64,
-    #[serde(rename = "BlocksCount")]
+    #[serde(rename = "BlocksCount", deserialize_with = "deserialize_trimmed")]
     blocks_count: u64,
-    #[serde(rename = "MappedBlocksCount")]
+    #[serde(rename = "MappedBlocksCount", deserialize_with = "deserialize_trimmed")]
     mapped_blocks_count: u64,
-    #[serde(rename = "ChecksumType")]
+    #[serde(rename = "ChecksumType", deserialize_with = "deserialize_trimmed")]
     checksum_type: String,
-    #[serde(rename = "BmapFileChecksum")]
+    #[serde(rename = "BmapFileChecksum", deserialize_with = "deserialize_trimmed")]
     bmap_file_checksum: String,
     #[serde(rename = "BlockMap")]
     block_map: BlockMap,
@@ -79,7 +91,7 @@ fn str_to_digest(s: String, digest: &mut [u8]) -> Result<(), XmlError> {
             Some(v) => v,
             None => return Err(XmlError::InvalidChecksum(s)),
         };
-        digest[i] = hi << 4 | lo;
+        digest[i] = (hi << 4) | lo;
     }
 
     Ok(())

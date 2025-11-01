@@ -206,6 +206,7 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(destination)?;
 
     setup_output(&output, &bmap, output.metadata()?)?;
@@ -231,6 +232,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     let mut output = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(destination)
         .await?;
 
@@ -263,6 +265,7 @@ fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> 
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(destination)?;
 
     let mut input = setup_local_input(&source)?;
@@ -281,6 +284,7 @@ async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<(
     let mut output = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(destination)
         .await?;
 
