@@ -3,8 +3,8 @@ pub use crate::bmap::*;
 mod discarder;
 pub use crate::discarder::*;
 use async_trait::async_trait;
-use futures::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 use futures::TryFutureExt;
+use futures::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 

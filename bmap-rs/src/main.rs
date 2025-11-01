@@ -1,7 +1,7 @@
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use async_compression::futures::bufread::GzipDecoder;
 use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
-use clap::{arg, command, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, arg, command};
 use flate2::read::GzDecoder;
 use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
@@ -241,7 +241,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     let res = setup_remote_input(source).await?;
     let stream = res
         .bytes_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .map_err(std::io::Error::other)
         .into_async_read();
     let reader = GzipDecoder::new(stream);
     let mut input = AsyncDiscarder::new(reader);
@@ -291,7 +291,7 @@ async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<(
     let res = setup_remote_input(source).await?;
     let stream = res
         .bytes_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .map_err(std::io::Error::other)
         .into_async_read();
     let reader = GzipDecoder::new(stream);
     let mut input = AsyncDiscarder::new(reader);

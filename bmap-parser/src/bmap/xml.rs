@@ -1,5 +1,5 @@
 use crate::bmap::{BmapBuilder, BmapBuilderError, HashType, HashValue};
-use quick_xml::de::{from_str, DeError};
+use quick_xml::de::{DeError, from_str};
 use serde::Deserialize;
 use std::str::FromStr;
 use thiserror::Error;
