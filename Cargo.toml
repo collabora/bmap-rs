@@ -3,6 +3,7 @@ members = [
   "bmap-parser",
   "bmap-rs",
 ]
+resolver = "3"
 
 # Most of the actual work is CPU-heavy, in particular the rust sha2
 # implementation so use full optimisations otherwise everything will run quite
