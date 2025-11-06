@@ -22,3 +22,7 @@ digest = "0.10.5"
 flate2 = "1.0.20"
 async-trait = "0.1.58"
 futures = "0.3.25"
+
+# Sha2 not support asm feature for Windows platform, disable it.
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+sha2 = { version = "0.10.6", features = ["asm"] }
