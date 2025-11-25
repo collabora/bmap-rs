@@ -5,7 +5,7 @@ rust. The inspiration for it is an existing project that is written in python ca
 [bmap-tools](https://salsa.debian.org/debian/bmap-tools). 
 
 Right now the implemented function is copying system images files using bmap, which is
-safer and faster than regular cp ro dd. That can be used to flash images into block
+safer and faster than regular cp or dd. That can be used to flash images into block
 devices.
 
 ## Usage
