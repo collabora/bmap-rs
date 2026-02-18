@@ -11,5 +11,8 @@ resolver = "3"
 [profile.dev]
 opt-level = 3
 
+[profile.release]
+strip = true
+
 [workspace.package]
 rust-version = "1.85"
