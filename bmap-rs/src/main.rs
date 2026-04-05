@@ -217,7 +217,7 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
-    output.sync_all()?;
+    output.sync_data()?;
 
     Ok(())
 }
@@ -255,7 +255,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
-    output.sync_all().await?;
+    output.sync_data().await?;
     Ok(())
 }
 
@@ -275,7 +275,7 @@ fn copy_local_input_nobmap(source: PathBuf, destination: PathBuf) -> Result<()> 
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
-    output.sync_all().expect("Sync failure");
+    output.sync_data().expect("Sync failure");
 
     Ok(())
 }
@@ -301,7 +301,7 @@ async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<(
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
-    output.sync_all().await?;
+    output.sync_data().await?;
     Ok(())
 }
 
