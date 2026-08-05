@@ -178,32 +178,36 @@ impl SeekForward for Decoder {
 
 fn setup_local_input(path: &Path) -> Result<Decoder> {
     let f = File::open(path)?;
-    match classify_format(path) {
-        Some(Compression::Gzip) => Ok(Decoder::new(Discarder::new(GzDecoder::new(f)))),
-        Some(Compression::Bzip2) => Ok(Decoder::new(Discarder::new(BzSyncDecoder::new(f)))),
-        Some(Compression::Xz) => Ok(Decoder::new(Discarder::new(XzSyncDecoder::new(f)))),
-        Some(Compression::Zstd) => Ok(Decoder::new(Discarder::new(ZstdSyncDecoder::new(f)?))),
-        Some(Compression::Lzma) => {
+    let compression = match classify_format(path) {
+        Some(compression) => compression,
+        None => return Ok(Decoder::new(f)),
+    };
+    let decompressed: Box<dyn Read> = match compression {
+        Compression::Gzip => Box::new(GzDecoder::new(f)),
+        Compression::Bzip2 => Box::new(BzSyncDecoder::new(f)),
+        Compression::Xz => Box::new(XzSyncDecoder::new(f)),
+        Compression::Zstd => Box::new(ZstdSyncDecoder::new(f)?),
+        Compression::Lzma => {
             let stream = LzmaStream::new_lzma_decoder(u64::MAX)?;
-            Ok(Decoder::new(Discarder::new(XzSyncDecoder::new_stream(
-                f, stream,
-            ))))
+            Box::new(XzSyncDecoder::new_stream(f, stream))
         }
-        Some(Compression::Lz4) => Ok(Decoder::new(Discarder::new(Lz4SyncDecoder::new(f)))),
-        Some(Compression::Zlib) => Ok(Decoder::new(Discarder::new(ZlibSyncDecoder::new(f)))),
-        None => Ok(Decoder::new(f)),
-    }
+        Compression::Lz4 => Box::new(Lz4SyncDecoder::new(f)),
+        Compression::Zlib => Box::new(ZlibSyncDecoder::new(f)),
+    };
+    Ok(Decoder::new(Discarder::new(decompressed)))
 }
 
 fn wrap_async_decoder<S>(path: &Path, stream: S) -> Result<Box<dyn AsyncRead + Unpin + Send>>
 where
     S: futures::io::AsyncBufRead + Unpin + Send + 'static,
 {
-    match classify_format(path) {
-        Some(Compression::Gzip) => Ok(Box::new(GzipDecoder::new(stream))),
-        Some(Compression::Bzip2) => Ok(Box::new(BzDecoder::new(stream))),
-        Some(Compression::Xz) => Ok(Box::new(XzDecoder::new(stream))),
-        Some(Compression::Zstd) => {
+    let compression =
+        classify_format(path).ok_or_else(|| anyhow!("Image file format not implemented"))?;
+    let decompressed: Box<dyn AsyncRead + Unpin + Send> = match compression {
+        Compression::Gzip => Box::new(GzipDecoder::new(stream)),
+        Compression::Bzip2 => Box::new(BzDecoder::new(stream)),
+        Compression::Xz => Box::new(XzDecoder::new(stream)),
+        Compression::Zstd => {
             let mut zstd = ZstdDecoder::new(stream);
             // async_compression's ZstdDecoder defaults to decoding only the
             // first frame, unlike zstd::stream::read::Decoder (used on the
@@ -211,13 +215,13 @@ where
             // a multi-frame image (e.g. produced by pzstd) would be silently
             // truncated after the first frame.
             zstd.multiple_members(true);
-            Ok(Box::new(zstd))
+            Box::new(zstd)
         }
-        Some(Compression::Lzma) => Ok(Box::new(LzmaDecoder::new(stream))),
-        Some(Compression::Lz4) => Ok(Box::new(Lz4Decoder::new(stream))),
-        Some(Compression::Zlib) => Ok(Box::new(ZlibDecoder::new(stream))),
-        None => bail!("Image file format not implemented"),
-    }
+        Compression::Lzma => Box::new(LzmaDecoder::new(stream)),
+        Compression::Lz4 => Box::new(Lz4Decoder::new(stream)),
+        Compression::Zlib => Box::new(ZlibDecoder::new(stream)),
+    };
+    Ok(decompressed)
 }
 
 async fn setup_remote_input(url: Url) -> Result<Response> {
