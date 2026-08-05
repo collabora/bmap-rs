@@ -4,6 +4,7 @@ use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
 use clap::{Arg, ArgAction, Command, arg, command};
 use flate2::read::GzDecoder;
 use futures::TryStreamExt;
+use futures::io::AsyncRead;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
 use reqwest::{Response, Url};
@@ -147,6 +148,17 @@ fn setup_local_input(path: &Path) -> Result<Decoder> {
     }
 }
 
+fn wrap_async_decoder<S>(path: &Path, stream: S) -> Result<Box<dyn AsyncRead + Unpin + Send>>
+where
+    S: futures::io::AsyncBufRead + Unpin + Send + 'static,
+{
+    match path.extension().and_then(OsStr::to_str) {
+        Some("gz") => Ok(Box::new(GzipDecoder::new(stream))),
+        None => bail!("No file extension found"),
+        _ => bail!("Image file format not implemented"),
+    }
+}
+
 async fn setup_remote_input(url: Url) -> Result<Response> {
     match PathBuf::from(url.path())
         .extension()
@@ -238,12 +250,13 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
 
     setup_output(&output, &bmap, output.metadata().await?)?;
 
+    let path = PathBuf::from(source.path());
     let res = setup_remote_input(source).await?;
     let stream = res
         .bytes_stream()
         .map_err(std::io::Error::other)
         .into_async_read();
-    let reader = GzipDecoder::new(stream);
+    let reader = wrap_async_decoder(&path, stream)?;
     let mut input = AsyncDiscarder::new(reader);
     let pb = setup_progress_bar(&bmap);
     bmap_parser::copy_async(
@@ -288,12 +301,13 @@ async fn copy_remote_input_nobmap(source: Url, destination: PathBuf) -> Result<(
         .open(destination)
         .await?;
 
+    let path = PathBuf::from(source.path());
     let res = setup_remote_input(source).await?;
     let stream = res
         .bytes_stream()
         .map_err(std::io::Error::other)
         .into_async_read();
-    let reader = GzipDecoder::new(stream);
+    let reader = wrap_async_decoder(&path, stream)?;
     let mut input = AsyncDiscarder::new(reader);
     let pb = setup_spinner();
     bmap_parser::copy_async_nobmap(&mut input, &mut pb.wrap_async_write(&mut output).compat())
