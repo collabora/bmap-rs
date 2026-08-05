@@ -1,11 +1,17 @@
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use async_compression::futures::bufread::GzipDecoder;
+use async_compression::futures::bufread::{
+    BzDecoder, GzipDecoder, Lz4Decoder, LzmaDecoder, XzDecoder, ZlibDecoder, ZstdDecoder,
+};
 use bmap_parser::{AsyncDiscarder, Bmap, Discarder, SeekForward};
+use bzip2::read::BzDecoder as BzSyncDecoder;
 use clap::{Arg, ArgAction, Command, arg, command};
-use flate2::read::GzDecoder;
+use flate2::read::{GzDecoder, ZlibDecoder as ZlibSyncDecoder};
 use futures::TryStreamExt;
 use futures::io::AsyncRead;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use liblzma::read::XzDecoder as XzSyncDecoder;
+use liblzma::stream::Stream as LzmaStream;
+use lz4_flex::frame::FrameDecoder as Lz4SyncDecoder;
 use nix::unistd::ftruncate;
 use reqwest::{Response, Url};
 use std::ffi::OsStr;
@@ -15,6 +21,39 @@ use std::io::Read;
 use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
+use zstd::stream::read::Decoder as ZstdSyncDecoder;
+
+/// Compression algorithm applied to an image.
+#[derive(Debug, Clone, Copy)]
+enum Compression {
+    Gzip,
+    Bzip2,
+    Xz,
+    Zstd,
+    Lzma,
+    Lz4,
+    Zlib,
+}
+
+/// Determine the compression algorithm used for an image from its file name.
+/// Returns `None` if the file name doesn't have a recognized extension.
+fn classify_format(path: &Path) -> Option<Compression> {
+    let name = path.file_name().and_then(OsStr::to_str)?;
+    let lower = name.to_lowercase();
+    const FORMATS: &[(&str, Compression)] = &[
+        (".gz", Compression::Gzip),
+        (".bz2", Compression::Bzip2),
+        (".xz", Compression::Xz),
+        (".zst", Compression::Zstd),
+        (".lzma", Compression::Lzma),
+        (".lz4", Compression::Lz4),
+        (".zz", Compression::Zlib),
+    ];
+    FORMATS
+        .iter()
+        .find(|(suffix, _)| lower.ends_with(suffix))
+        .map(|(_, compression)| *compression)
+}
 
 #[derive(Debug)]
 enum Image {
@@ -139,12 +178,20 @@ impl SeekForward for Decoder {
 
 fn setup_local_input(path: &Path) -> Result<Decoder> {
     let f = File::open(path)?;
-    match path.extension().and_then(OsStr::to_str) {
-        Some("gz") => {
-            let gz = GzDecoder::new(f);
-            Ok(Decoder::new(Discarder::new(gz)))
+    match classify_format(path) {
+        Some(Compression::Gzip) => Ok(Decoder::new(Discarder::new(GzDecoder::new(f)))),
+        Some(Compression::Bzip2) => Ok(Decoder::new(Discarder::new(BzSyncDecoder::new(f)))),
+        Some(Compression::Xz) => Ok(Decoder::new(Discarder::new(XzSyncDecoder::new(f)))),
+        Some(Compression::Zstd) => Ok(Decoder::new(Discarder::new(ZstdSyncDecoder::new(f)?))),
+        Some(Compression::Lzma) => {
+            let stream = LzmaStream::new_lzma_decoder(u64::MAX)?;
+            Ok(Decoder::new(Discarder::new(XzSyncDecoder::new_stream(
+                f, stream,
+            ))))
         }
-        _ => Ok(Decoder::new(f)),
+        Some(Compression::Lz4) => Ok(Decoder::new(Discarder::new(Lz4SyncDecoder::new(f)))),
+        Some(Compression::Zlib) => Ok(Decoder::new(Discarder::new(ZlibSyncDecoder::new(f)))),
+        None => Ok(Decoder::new(f)),
     }
 }
 
@@ -152,21 +199,32 @@ fn wrap_async_decoder<S>(path: &Path, stream: S) -> Result<Box<dyn AsyncRead + U
 where
     S: futures::io::AsyncBufRead + Unpin + Send + 'static,
 {
-    match path.extension().and_then(OsStr::to_str) {
-        Some("gz") => Ok(Box::new(GzipDecoder::new(stream))),
-        None => bail!("No file extension found"),
-        _ => bail!("Image file format not implemented"),
+    match classify_format(path) {
+        Some(Compression::Gzip) => Ok(Box::new(GzipDecoder::new(stream))),
+        Some(Compression::Bzip2) => Ok(Box::new(BzDecoder::new(stream))),
+        Some(Compression::Xz) => Ok(Box::new(XzDecoder::new(stream))),
+        Some(Compression::Zstd) => {
+            let mut zstd = ZstdDecoder::new(stream);
+            // async_compression's ZstdDecoder defaults to decoding only the
+            // first frame, unlike zstd::stream::read::Decoder (used on the
+            // sync path) which decodes all concatenated frames. Without this,
+            // a multi-frame image (e.g. produced by pzstd) would be silently
+            // truncated after the first frame.
+            zstd.multiple_members(true);
+            Ok(Box::new(zstd))
+        }
+        Some(Compression::Lzma) => Ok(Box::new(LzmaDecoder::new(stream))),
+        Some(Compression::Lz4) => Ok(Box::new(Lz4Decoder::new(stream))),
+        Some(Compression::Zlib) => Ok(Box::new(ZlibDecoder::new(stream))),
+        None => bail!("Image file format not implemented"),
     }
 }
 
 async fn setup_remote_input(url: Url) -> Result<Response> {
-    match PathBuf::from(url.path())
-        .extension()
-        .and_then(OsStr::to_str)
-    {
-        Some("gz") => reqwest::get(url).await.map_err(anyhow::Error::new),
-        None => bail!("No file extension found"),
-        _ => bail!("Image file format not implemented"),
+    let path = PathBuf::from(url.path());
+    match classify_format(&path) {
+        Some(_) => reqwest::get(url).await.map_err(anyhow::Error::new),
+        None => bail!("Image file format not implemented"),
     }
 }
 
