@@ -27,3 +27,4 @@ bzip2 = "0.6.1"
 zstd = "0.13.3"
 liblzma = "0.4.7"
 lz4_flex = "0.14.0"
+tar = { version = "0.4.46", default-features = false }
