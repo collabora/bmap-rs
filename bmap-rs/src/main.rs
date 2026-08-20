@@ -7,6 +7,7 @@ use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use nix::unistd::ftruncate;
 use reqwest::{Response, Url};
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
@@ -158,6 +159,57 @@ async fn setup_remote_input(url: Url) -> Result<Response> {
     }
 }
 
+/// Replaces the value of the `<BmapFileChecksum>` element with 64 zeroes,
+/// without touching any other part of the XML document (e.g. block range
+/// checksums that could coincidentally match the file checksum value).
+fn zero_bmap_file_checksum(xml: &str) -> Result<String> {
+    let start_tag = "<BmapFileChecksum";
+    let end_tag = "</BmapFileChecksum>";
+
+    let tag_start = xml
+        .find(start_tag)
+        .context("Missing <BmapFileChecksum> element")?;
+    let content_start = tag_start
+        + xml[tag_start..]
+            .find('>')
+            .context("Malformed <BmapFileChecksum> element")?
+        + 1;
+    let content_end = content_start
+        + xml[content_start..]
+            .find(end_tag)
+            .context("Missing </BmapFileChecksum> element")?;
+
+    let mut zeroed = String::with_capacity(xml.len());
+    zeroed.push_str(&xml[..content_start]);
+    zeroed.push_str(&"0".repeat(64));
+    zeroed.push_str(&xml[content_end..]);
+    Ok(zeroed)
+}
+
+fn bmap_integrity(checksum: Option<&str>, xml: &str) -> Result<()> {
+    // The bmap file checksum is optional for backward compatibility with
+    // older .bmap files that don't have it; skip the check in that case.
+    let checksum = match checksum {
+        Some(checksum) => checksum,
+        None => return Ok(()),
+    };
+
+    // Unset only the checksum element before hashing.
+    let mut bmap_hash = Sha256::new();
+    let before_checksum = zero_bmap_file_checksum(xml)?;
+
+    bmap_hash.update(before_checksum);
+    let digest = bmap_hash.finalize_reset();
+    let new_checksum = hex::encode(digest.as_slice());
+    // Compare case-insensitively since hex checksums may be uppercase or lowercase.
+    ensure!(
+        checksum.eq_ignore_ascii_case(&new_checksum),
+        "Bmap file doesn't match its checksum. It could be corrupted or compromised."
+    );
+    println!("Bmap integrity checked!");
+    Ok(())
+}
+
 fn setup_progress_bar(bmap: &Bmap) -> ProgressBar {
     let pb = ProgressBar::new(bmap.total_mapped_size());
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
@@ -203,6 +255,7 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
     b.read_to_string(&mut xml)?;
 
     let bmap = Bmap::from_xml(&xml)?;
+    bmap_integrity(bmap.bmap_file_checksum(), &xml)?;
     let output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -229,6 +282,7 @@ async fn copy_remote_input(source: Url, destination: PathBuf) -> Result<()> {
     println!("Found bmap file: {}", bmap_url);
 
     let bmap = Bmap::from_xml(&xml)?;
+    bmap_integrity(bmap.bmap_file_checksum(), &xml)?;
     let mut output = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -311,5 +365,82 @@ async fn main() -> Result<()> {
 
     match opts.command {
         Subcommand::Copy(c) => copy(c).await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sha256_hex(input: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    fn bmap_xml_with_checksum(checksum: &str, chksum_range: &str) -> String {
+        format!(
+            r#"<?xml version="1.0"?>
+<bmap version="2.0">
+  <ImageSize>4096</ImageSize>
+  <BlockSize>4096</BlockSize>
+  <BlocksCount>1</BlocksCount>
+  <MappedBlocksCount>1</MappedBlocksCount>
+  <ChecksumType>sha256</ChecksumType>
+  <BmapFileChecksum>{checksum}</BmapFileChecksum>
+  <BlockMap>
+    <Range chksum="{chksum_range}">0-0</Range>
+  </BlockMap>
+</bmap>"#
+        )
+    }
+
+    fn make_valid_bmap() -> String {
+        let zeroed = bmap_xml_with_checksum(&"0".repeat(64), &"a".repeat(64));
+        let checksum = sha256_hex(&zeroed);
+        bmap_xml_with_checksum(&checksum, &"a".repeat(64))
+    }
+
+    #[test]
+    fn accepts_known_good_bmap() {
+        let xml = make_valid_bmap();
+        let checksum = sha256_hex(&zero_bmap_file_checksum(&xml).unwrap());
+        assert!(bmap_integrity(Some(&checksum), &xml).is_ok());
+    }
+
+    #[test]
+    fn accepts_uppercase_hex_checksum() {
+        let xml = make_valid_bmap();
+        let checksum = sha256_hex(&zero_bmap_file_checksum(&xml).unwrap()).to_uppercase();
+        assert!(bmap_integrity(Some(&checksum), &xml).is_ok());
+    }
+
+    #[test]
+    fn rejects_tampered_bmap() {
+        let xml = make_valid_bmap();
+        let checksum = sha256_hex(&zero_bmap_file_checksum(&xml).unwrap());
+        let tampered = xml.replace("MappedBlocksCount>1<", "MappedBlocksCount>2<");
+        assert!(bmap_integrity(Some(&checksum), &tampered).is_err());
+    }
+
+    #[test]
+    fn skips_check_when_checksum_missing() {
+        assert!(bmap_integrity(None, "<bmap></bmap>").is_ok());
+    }
+
+    #[test]
+    fn zeroes_only_the_checksum_element() {
+        // Use a range checksum equal to the bmap file checksum to make sure only
+        // the <BmapFileChecksum> element gets zeroed, not the matching range.
+        let same_checksum = "b".repeat(64);
+        let xml = bmap_xml_with_checksum(&same_checksum, &same_checksum);
+
+        let zeroed = zero_bmap_file_checksum(&xml).unwrap();
+
+        assert!(zeroed.contains(&format!(
+            "<BmapFileChecksum>{}</BmapFileChecksum>",
+            "0".repeat(64)
+        )));
+        assert!(zeroed.contains(&format!("chksum=\"{same_checksum}\"")));
     }
 }

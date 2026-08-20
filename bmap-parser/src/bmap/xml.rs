@@ -45,8 +45,8 @@ struct Bmap {
     mapped_blocks_count: u64,
     #[serde(rename = "ChecksumType", deserialize_with = "deserialize_trimmed")]
     checksum_type: String,
-    #[serde(rename = "BmapFileChecksum", deserialize_with = "deserialize_trimmed")]
-    bmap_file_checksum: String,
+    #[serde(rename = "BmapFileChecksum", default)]
+    bmap_file_checksum: Option<String>,
     #[serde(rename = "BlockMap")]
     block_map: BlockMap,
 }
@@ -108,6 +108,7 @@ pub(crate) fn from_xml(xml: &str) -> Result<crate::bmap::Bmap, XmlError> {
         .block_size(b.block_size)
         .blocks(b.blocks_count)
         .checksum_type(hash_type)
+        .bmap_file_checksum(b.bmap_file_checksum.map(|s| s.trim().to_string()))
         .mapped_blocks(b.mapped_blocks_count);
 
     for range in b.block_map.ranges {

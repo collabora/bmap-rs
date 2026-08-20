@@ -57,6 +57,7 @@ pub struct Bmap {
     blocks: u64,
     mapped_blocks: u64,
     checksum_type: HashType,
+    bmap_file_checksum: Option<String>,
     blockmap: Vec<BlockRange>,
 }
 
@@ -100,6 +101,11 @@ impl Bmap {
         self.blockmap.iter()
     }
 
+    /// checksum of the .bmap xml file
+    pub fn bmap_file_checksum(&self) -> Option<&str> {
+        self.bmap_file_checksum.as_deref()
+    }
+
     /// Total mapped size in bytes
     pub fn total_mapped_size(&self) -> u64 {
         self.block_size * self.mapped_blocks
@@ -129,6 +135,7 @@ pub struct BmapBuilder {
     blocks: Option<u64>,
     checksum_type: Option<HashType>,
     mapped_blocks: Option<u64>,
+    bmap_file_checksum: Option<String>,
     blockmap: Vec<BlockRange>,
 }
 
@@ -155,6 +162,11 @@ impl BmapBuilder {
 
     pub fn checksum_type(&mut self, checksum_type: HashType) -> &mut Self {
         self.checksum_type = Some(checksum_type);
+        self
+    }
+
+    pub fn bmap_file_checksum(&mut self, bmap_file_checksum: Option<String>) -> &mut Self {
+        self.bmap_file_checksum = bmap_file_checksum;
         self
     }
 
@@ -186,6 +198,7 @@ impl BmapBuilder {
         let checksum_type = self
             .checksum_type
             .ok_or(BmapBuilderError::MissingChecksumType)?;
+        let bmap_file_checksum = self.bmap_file_checksum;
         let blockmap = self.blockmap;
 
         Ok(Bmap {
@@ -194,6 +207,7 @@ impl BmapBuilder {
             blocks,
             mapped_blocks,
             checksum_type,
+            bmap_file_checksum,
             blockmap,
         })
     }
