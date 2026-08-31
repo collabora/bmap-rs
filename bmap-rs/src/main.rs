@@ -10,7 +10,7 @@ use reqwest::{Response, Url};
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write as IoWrite};
 use std::os::unix::io::AsFd;
 use std::path::{Path, PathBuf};
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -158,6 +158,31 @@ async fn setup_remote_input(url: Url) -> Result<Response> {
     }
 }
 
+/// Counts written bytes on the progress bar but, unlike indicatif's
+/// `wrap_write`, leaves the bar position alone when seeking over holes.
+struct ProgressWriter<'a, W> {
+    inner: W,
+    pb: &'a ProgressBar,
+}
+
+impl<W: IoWrite> IoWrite for ProgressWriter<'_, W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.pb.inc(n as u64);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<W: SeekForward> SeekForward for ProgressWriter<'_, W> {
+    fn seek_forward(&mut self, forward: u64) -> std::io::Result<()> {
+        self.inner.seek_forward(forward)
+    }
+}
+
 fn setup_progress_bar(bmap: &Bmap) -> ProgressBar {
     let pb = ProgressBar::new(bmap.total_mapped_size());
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
@@ -213,7 +238,11 @@ fn copy_local_input(source: PathBuf, destination: PathBuf) -> Result<()> {
 
     let mut input = setup_local_input(&source)?;
     let pb = setup_progress_bar(&bmap);
-    bmap_parser::copy(&mut input, &mut pb.wrap_write(&output), &bmap)?;
+    let mut dest = ProgressWriter {
+        inner: &output,
+        pb: &pb,
+    };
+    bmap_parser::copy(&mut input, &mut dest, &bmap)?;
     pb.finish_and_clear();
 
     println!("Done: Syncing...");
